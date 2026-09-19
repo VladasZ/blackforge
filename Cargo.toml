@@ -1,0 +1,62 @@
+[workspace]
+members = ["crates/blackforge", "crates/blackforge-core"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/VladasZ/blackforge"
+version = "0.1.0"
+
+[workspace.dependencies]
+blackforge-core = { path = "crates/blackforge-core", version = "0.1.0" }
+
+anyhow = "1.0"
+base64 = "0.23"
+clap = { version = "4.6", features = ["derive"] }
+dirs = "7.0"
+flate2 = "1.1"
+futures-util = "0.3"
+indicatif = "0.18"
+reqwest = { version = "0.13", default-features = false, features = [
+    "json",
+    "rustls",
+    "stream",
+] }
+semver = { version = "1.0", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml_ng = "0.10"
+steamlocate = "2.1"
+tempfile = "3.27"
+thiserror = "2.0"
+tokio = { version = "1.53", features = [
+    "fs",
+    "io-util",
+    "macros",
+    "process",
+    "rt-multi-thread",
+    "sync",
+] }
+toml = "1.1"
+zip = { version = "8.6", default-features = false, features = ["deflate"] }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+
+explicit_deref_methods = "allow"
+format_push_string = "allow"
+inline_always = "allow"
+manual_assert = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+missing_safety_doc = "allow"
+module_inception = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+needless_pass_by_value = "allow"
+new_without_default = "allow"
+return_self_not_must_use = "allow"
+struct_field_names = "allow"
+unnecessary_box_returns = "allow"

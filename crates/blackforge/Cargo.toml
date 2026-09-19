@@ -1,0 +1,17 @@
+[package]
+description = "Cross platform mod manager for Valheim"
+edition.workspace = true
+license.workspace = true
+name = "blackforge"
+repository.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+blackforge-core = { workspace = true }
+clap = { workspace = true }
+indicatif = { workspace = true }
+tokio = { workspace = true }

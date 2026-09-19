@@ -1,0 +1,204 @@
+{
+  "schemaVersion": "0.3.0",
+  "games": {
+    "valheim": {
+      "uuid": "c69c1da5-4c6b-4523-a8e4-8bd49e1c9790",
+      "label": "valheim",
+      "meta": {
+        "displayName": "Valheim",
+        "iconUrl": "valheim/valheim-cover-360x480.webp"
+      },
+      "distributions": [
+        {
+          "platform": "steam",
+          "identifier": "892970"
+        },
+        {
+          "platform": "xbox-game-pass",
+          "identifier": "CoffeeStainStudios.Valheim"
+        },
+        {
+          "platform": "steam",
+          "identifier": "896660"
+        }
+      ],
+      "r2modman": [
+        {
+          "meta": {
+            "displayName": "Valheim",
+            "iconUrl": "valheim/valheim-cover-360x480.webp"
+          },
+          "internalFolderName": "Valheim",
+          "dataFolderName": "valheim_Data",
+          "distributions": [
+            {
+              "platform": "steam",
+              "identifier": "892970"
+            },
+            {
+              "platform": "xbox-game-pass",
+              "identifier": "CoffeeStainStudios.Valheim"
+            }
+          ],
+          "settingsIdentifier": "Valheim",
+          "packageIndex": "https://thunderstore.io/c/valheim/api/v1/package-listing-index/",
+          "steamFolderName": "Valheim",
+          "exeNames": [
+            "valheim.exe",
+            "valheim.x86_64"
+          ],
+          "gameInstanceType": "game",
+          "gameSelectionDisplayMode": "visible",
+          "additionalSearchStrings": [
+            "英灵神殿"
+          ],
+          "packageLoader": "bepinex",
+          "installRules": [
+            {
+              "route": "BepInEx/plugins",
+              "defaultFileExtensions": [
+                ".dll"
+              ],
+              "trackingMethod": "subdir",
+              "subRoutes": [],
+              "isDefaultLocation": true
+            },
+            {
+              "route": "BepInEx/core",
+              "defaultFileExtensions": [],
+              "trackingMethod": "subdir",
+              "subRoutes": [],
+              "isDefaultLocation": false
+            },
+            {
+              "route": "BepInEx/patchers",
+              "defaultFileExtensions": [],
+              "trackingMethod": "subdir",
+              "subRoutes": [],
+              "isDefaultLocation": false
+            },
+            {
+              "route": "BepInEx/monomod",
+              "defaultFileExtensions": [
+                ".mm.dll"
+              ],
+              "trackingMethod": "subdir",
+              "subRoutes": [],
+              "isDefaultLocation": false
+            },
+            {
+              "route": "BepInEx/config",
+              "defaultFileExtensions": [],
+              "trackingMethod": "none",
+              "subRoutes": [],
+              "isDefaultLocation": false
+            },
+            {
+              "route": "BepInEx/SlimVML",
+              "defaultFileExtensions": [],
+              "trackingMethod": "subdir",
+              "subRoutes": [],
+              "isDefaultLocation": false
+            }
+          ],
+          "relativeFileExclusions": null
+        },
+        {
+          "meta": {
+            "displayName": "Valheim Dedicated Server",
+            "iconUrl": "valheim/valheim-cover-360x480.webp"
+          },
+          "internalFolderName": "Valheim",
+          "dataFolderName": "valheim_server_Data",
+          "distributions": [
+            {
+              "platform": "steam",
+              "identifier": "896660"
+            }
+          ],
+          "settingsIdentifier": "ValheimServer",
+          "packageIndex": "https://thunderstore.io/c/valheim/api/v1/package-listing-index/",
+          "steamFolderName": "Valheim dedicated server",
+          "exeNames": [
+            "valheim_server.exe",
+            "valheim_server.x86_64"
+          ],
+          "gameInstanceType": "server",
+          "gameSelectionDisplayMode": "visible",
+          "additionalSearchStrings": [
+            "英灵神殿"
+          ],
+          "packageLoader": "bepinex",
+          "installRules": [
+            {
+              "route": "BepInEx/plugins",
+              "defaultFileExtensions": [
+                ".dll"
+              ],
+              "trackingMethod": "subdir",
+              "subRoutes": [],
+              "isDefaultLocation": true
+            },
+            {
+              "route": "BepInEx/core",
+              "defaultFileExtensions": [],
+              "trackingMethod": "subdir",
+              "subRoutes": [],
+              "isDefaultLocation": false
+            },
+            {
+              "route": "BepInEx/patchers",
+              "defaultFileExtensions": [],
+              "trackingMethod": "subdir",
+              "subRoutes": [],
+              "isDefaultLocation": false
+            },
+            {
+              "route": "BepInEx/monomod",
+              "defaultFileExtensions": [
+                ".mm.dll"
+              ],
+              "trackingMethod": "subdir",
+              "subRoutes": [],
+              "isDefaultLocation": false
+            },
+            {
+              "route": "BepInEx/config",
+              "defaultFileExtensions": [],
+              "trackingMethod": "none",
+              "subRoutes": [],
+              "isDefaultLocation": false
+            },
+            {
+              "route": "BepInEx/SlimVML",
+              "defaultFileExtensions": [],
+              "trackingMethod": "subdir",
+              "subRoutes": [],
+              "isDefaultLocation": false
+            }
+          ],
+          "relativeFileExclusions": null
+        }
+      ]
+    }
+  },
+  "communities": {},
+  "packageInstallers": {},
+  "modloaderPackages": [
+    {
+      "packageId": "bbepis-BepInExPack",
+      "rootFolder": "BepInExPack",
+      "loader": "bepinex"
+    },
+    {
+      "packageId": "denikson-BepInExPack_Valheim",
+      "rootFolder": "BepInExPack_Valheim",
+      "loader": "bepinex"
+    },
+    {
+      "packageId": "1F31A-BepInEx_Valheim_Full",
+      "rootFolder": "BepInEx_Valheim_Full",
+      "loader": "bepinex"
+    }
+  ]
+}
