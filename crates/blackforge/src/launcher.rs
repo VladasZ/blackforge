@@ -37,7 +37,7 @@ pub fn set_game_args(args: &str) {
 
 enum Started {
     Running {
-        child: Child,
+        child: Box<Child>,
         label: String,
     },
     /// Steam does not know the game, the user has to point at the folder.
@@ -85,12 +85,15 @@ fn start(game_dir: Option<PathBuf>) {
             })?;
             let child = spawn_game(&plan, profile.dir()).await?;
             let label = format!("{} {}", game.display_name, manifest.target);
-            Ok(Started::Running { child, label })
+            Ok(Started::Running {
+                child: Box::new(child),
+                label,
+            })
         },
         |result| match result {
             Ok(Started::Running { child, label }) => {
                 toast::success(format!("started {label}"));
-                wait_for_exit(child);
+                wait_for_exit(*child);
             }
             Ok(Started::NotFound { game }) => {
                 RUNNING.store(false, Ordering::SeqCst);
