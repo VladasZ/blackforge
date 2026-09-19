@@ -26,5 +26,6 @@ pub mod resolve;
 mod testing;
 pub mod thunderstore;
 mod util;
+pub mod world;
 
 pub use error::{Error, Result};

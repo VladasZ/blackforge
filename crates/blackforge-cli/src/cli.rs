@@ -83,6 +83,14 @@ pub enum Command {
     },
     /// Check everything that run depends on
     Doctor,
+    /// List the portals of a world save
+    Portals {
+        /// A world .db file, or the world folder of a newer save
+        world: PathBuf,
+        /// Print only the names that have no second portal
+        #[arg(long)]
+        unpaired: bool,
+    },
     /// Read and edit the config files of the mods
     #[command(subcommand)]
     Config(ConfigCommand),
