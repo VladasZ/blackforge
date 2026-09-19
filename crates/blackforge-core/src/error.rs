@@ -5,6 +5,8 @@ use std::{
 
 use thiserror::Error;
 
+use crate::fix::Fix;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
@@ -45,13 +47,13 @@ pub enum Error {
     ProfileExists(String),
     #[error("'{0}' is not a valid profile name, use letters, digits, '-' and '_'")]
     InvalidProfileName(String),
-    #[error("no active profile, pick one with 'blackforge profile switch <name>'")]
+    #[error("no profile is the active one")]
     NoActiveProfile,
     #[error("mod '{0}' is not in the manifest")]
     NotInManifest(String),
     #[error("the package list is not downloaded yet")]
     IndexMissing,
-    #[error("the profile has no mod loader, run 'blackforge sync' first")]
+    #[error("the mod loader is not installed, the mods are not synced yet")]
     LoaderMissing,
     #[error("the progress receiver was dropped, the operation was cancelled")]
     Cancelled,
@@ -59,6 +61,19 @@ pub enum Error {
     Unsupported(String),
     #[error("{0}")]
     Invalid(String),
+}
+
+impl Error {
+    /// What the user can do inside blackforge about this error, when one
+    /// action solves it.
+    pub fn fix(&self) -> Option<Fix> {
+        match self {
+            Self::NoActiveProfile => Some(Fix::PickProfile),
+            Self::GameNotInstalled(_) => Some(Fix::GiveGameFolder),
+            Self::LoaderMissing => Some(Fix::Sync),
+            _ => None,
+        }
+    }
 }
 
 pub trait IoContext<T> {

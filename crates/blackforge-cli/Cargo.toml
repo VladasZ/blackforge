@@ -1,14 +1,13 @@
 [package]
-description = "Graphical mod manager for Valheim"
+description = "Command line mod manager for Valheim"
 edition.workspace = true
 license.workspace = true
-name = "blackforge"
+name = "blackforge-cli"
 repository.workspace = true
 version.workspace = true
 
-# The command line crate owns the `blackforge` file name in the target folder.
 [[bin]]
-name = "blackforge-gui"
+name = "blackforge"
 path = "src/main.rs"
 
 [lints]
@@ -17,7 +16,6 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 blackforge-core = { workspace = true }
-hilen = { workspace = true }
-image = { workspace = true }
-log = { workspace = true }
+clap = { workspace = true }
+indicatif = { workspace = true }
 tokio = { workspace = true }

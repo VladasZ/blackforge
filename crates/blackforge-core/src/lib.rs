@@ -8,6 +8,7 @@ pub mod config;
 pub mod deploy;
 pub mod doctor;
 pub mod error;
+pub mod fix;
 pub mod forge;
 pub mod game;
 pub mod http;

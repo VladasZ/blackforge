@@ -6,6 +6,7 @@ use tokio::process::Command;
 
 use crate::{
     error::Result,
+    fix::Fix,
     forge::Forge,
     install::{Installed, wanted},
     launch::{Os, preloader_path},
@@ -26,7 +27,10 @@ pub enum Status {
 pub struct Check {
     pub name: &'static str,
     pub status: Status,
+    /// What was found. It never says how to solve it inside blackforge, that
+    /// is `fix`, which each frontend words its own way.
     pub detail: String,
+    pub fix: Option<Fix>,
 }
 
 impl Check {
@@ -35,29 +39,30 @@ impl Check {
             name,
             status,
             detail: detail.into(),
+            fix: None,
         }
+    }
+
+    fn with_fix(mut self, fix: Option<Fix>) -> Self {
+        self.fix = fix;
+        self
     }
 }
 
 impl Forge {
+    /// The checks of the active profile.
     pub async fn doctor(&self) -> Result<Vec<Check>> {
-        let mut checks = vec![Check::new(
-            "data folder",
-            Status::Ok,
-            self.data().root().display().to_string(),
-        )];
+        let mut checks = vec![self.data_folder_check()];
 
         let profile = match self.store().active().await {
             Ok(profile) => profile,
             Err(error) => {
                 checks.push(if self.store().list().await?.is_empty() {
-                    Check::new(
-                        "active profile",
-                        Status::Warning,
-                        "no profile yet, the first 'blackforge add <mod>' or 'blackforge run' creates it",
-                    )
+                    Check::new("active profile", Status::Warning, "no profile yet")
+                        .with_fix(Some(Fix::CreateProfile))
                 } else {
                     Check::new("active profile", Status::Problem, error.to_string())
+                        .with_fix(error.fix())
                 });
                 return Ok(checks);
             }
@@ -68,7 +73,30 @@ impl Forge {
             Status::Ok,
             format!("{}, {} {}", profile.name(), manifest.game, manifest.target),
         ));
+        checks.extend(self.run_checks(&profile).await?);
+        Ok(checks)
+    }
 
+    /// The checks of one given profile, for a frontend that does not follow
+    /// the active one.
+    pub async fn doctor_of(&self, profile: &Profile) -> Result<Vec<Check>> {
+        let mut checks = vec![self.data_folder_check()];
+        checks.extend(self.run_checks(profile).await?);
+        Ok(checks)
+    }
+
+    fn data_folder_check(&self) -> Check {
+        Check::new(
+            "data folder",
+            Status::Ok,
+            self.data().root().display().to_string(),
+        )
+    }
+
+    /// Everything a run of this profile depends on.
+    async fn run_checks(&self, profile: &Profile) -> Result<Vec<Check>> {
+        let mut checks = Vec::new();
+        let manifest = profile.manifest().await?;
         let game = self.game(&manifest).await?;
         let os = Os::current()?;
         match self.locate_game(&game, None).await {
@@ -90,23 +118,19 @@ impl Forge {
                     ));
                 }
             }
-            Err(error) => checks.push(Check::new(
-                "game",
-                Status::Problem,
-                format!("{error}. Pass the folder once with 'blackforge run --game-dir <path>'"),
-            )),
+            Err(error) => checks.push(
+                Check::new("game", Status::Problem, error.to_string())
+                    .with_fix(Some(Fix::GiveGameFolder)),
+            ),
         }
 
-        checks.push(self.sync_check(&profile).await?);
+        checks.push(self.sync_check(profile).await?);
         let loader_ready = exists(&preloader_path(profile.dir())).await;
         checks.push(if loader_ready {
-            Check::new("mod loader", Status::Ok, "BepInEx is in the profile")
+            Check::new("mod loader", Status::Ok, "BepInEx is installed")
         } else {
-            Check::new(
-                "mod loader",
-                Status::Problem,
-                "BepInEx is not in the profile, run 'blackforge sync'",
-            )
+            Check::new("mod loader", Status::Problem, "BepInEx is not installed")
+                .with_fix(Some(Fix::Sync))
         });
 
         if os == Os::MacArm {
@@ -125,7 +149,7 @@ impl Forge {
             });
         }
         if matches!(os, Os::MacArm | Os::MacIntel) && loader_ready {
-            checks.push(quarantine_check(&profile).await);
+            checks.push(quarantine_check(profile).await);
         }
         Ok(checks)
     }
@@ -146,14 +170,15 @@ impl Forge {
             Check::new(
                 "mods",
                 Status::Ok,
-                format!("{} installed, the profile matches the lock", wanted.len()),
+                format!("{} installed, all match the lock", wanted.len()),
             )
         } else {
             Check::new(
                 "mods",
                 Status::Warning,
-                "the profile does not match the lock, run 'blackforge sync'",
+                "the installed mods do not match the lock",
             )
+            .with_fix(Some(Fix::Sync))
         })
     }
 }

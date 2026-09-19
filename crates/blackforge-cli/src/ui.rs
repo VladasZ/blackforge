@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use blackforge_core::{
+    fix::Fix,
     forge::LockChange,
     ident::VersionedId,
     install::SyncReport,
@@ -85,6 +86,16 @@ async fn draw(mut events: UnboundedReceiver<Event>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// How a fix that the core names is done on the command line.
+pub fn hint(fix: Fix) -> &'static str {
+    match fix {
+        Fix::CreateProfile => "the first 'blackforge add <mod>' or 'blackforge run' creates one",
+        Fix::PickProfile => "pick one with 'blackforge profile switch <name>'",
+        Fix::GiveGameFolder => "pass the folder once with 'blackforge run --game-dir <path>'",
+        Fix::Sync => "run 'blackforge sync'",
+    }
 }
 
 pub fn print_lock_change(change: &LockChange) {

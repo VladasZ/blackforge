@@ -1,0 +1,373 @@
+//! Search Thunderstore and add a mod.
+
+use std::{cmp::Reverse, collections::HashSet};
+
+use blackforge_core::manifest::VersionReq;
+use hilen::{
+    refs::{Weak, weak_from_ref},
+    ui::{
+        Button, CellRegistry, Container, DropDown, Label, Setup, TableData, TableView,
+        TextAlignment, TextField, ToLabel, UIColor, VerticalAlignment, View, ViewData, ViewTouch,
+        view,
+    },
+};
+
+use crate::{
+    backend,
+    ui::{
+        colors,
+        mod_icon::ModIcon,
+        mod_info::ModInfo,
+        mods_page::lock_change_summary,
+        pill::{self, Pill, compact},
+        style, toast,
+    },
+};
+
+const ROW_HEIGHT: f32 = 88.0;
+const SEARCH_WIDTH: f32 = 340.0;
+const SORT_WIDTH: f32 = 150.0;
+/// The pills end where the add button starts, with a gap.
+const PILLS_RIGHT: f32 = 116.0;
+const PILL_GAP: f32 = 8.0;
+/// Where the first line of a row starts: the name, the pills and the button.
+const TOP_LINE: f32 = 12.0;
+const ICON: f32 = 40.0;
+/// The name and the description start right of the icon.
+const TEXT_LEFT: f32 = 4.0 + ICON + 12.0;
+/// Rows past this add nothing, the user narrows the search instead.
+const SHOWN: usize = 200;
+
+/// The order of the found packages.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Sort {
+    /// A hit in the name first, then more downloads. The order of the core.
+    #[default]
+    BestMatch,
+    /// Most downloads first, wherever the words were found.
+    Downloads,
+}
+
+impl ToLabel for Sort {
+    fn to_label(&self) -> String {
+        match self {
+            Self::BestMatch => "best match",
+            Self::Downloads => "downloads",
+        }
+        .to_owned()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Hit {
+    id: String,
+    version: String,
+    downloads: String,
+    description: String,
+    installed: bool,
+}
+
+struct Found {
+    query: u64,
+    total: usize,
+    hits: Vec<Hit>,
+}
+
+#[view]
+pub struct BrowsePage {
+    hits: Vec<Hit>,
+    /// Counts the searches, so a slow old one cannot replace a newer one.
+    query: u64,
+    sort: Sort,
+
+    #[init]
+    title: Label,
+    subtitle: Label,
+    sort_by: DropDown<Sort>,
+    search: TextField,
+    table: TableView,
+}
+
+impl Setup for BrowsePage {
+    fn setup(mut self: Weak<Self>) {
+        style::title(self.title, "Browse");
+        self.title.place().t(24).l(style::PAGE_PAD).size(300, 30);
+
+        style::dim(self.subtitle);
+        self.subtitle.place().t(56).l(style::PAGE_PAD).size(500, 16);
+
+        style::field(self.search, "search Thunderstore");
+        self.search
+            .place()
+            .t(28)
+            .r(style::PAGE_PAD)
+            .size(SEARCH_WIDTH, style::FIELD_H);
+        self.search.changed.val(move |text| self.find(text));
+
+        self.sort_by
+            .set_values(vec![Sort::BestMatch, Sort::Downloads]);
+        self.sort_by.set_text_size(13);
+        self.sort_by.set_text_color(colors::FG);
+        self.sort_by.set_accent_color(colors::ACCENT);
+        self.sort_by.set_color(colors::FIELD_BG);
+        self.sort_by.set_border_color(colors::BORDER);
+        self.sort_by.set_border_width(1);
+        self.sort_by.set_corner_radius(7);
+        self.sort_by
+            .place()
+            .t(28)
+            .r(style::PAGE_PAD + SEARCH_WIDTH + 10.0)
+            .size(SORT_WIDTH, style::FIELD_H);
+        self.sort_by.on_changed(move |sort| {
+            self.sort = sort;
+            self.refresh();
+        });
+
+        self.table.set_data_source(self).register_cell::<HitCell>();
+        style::table(self.table);
+        self.table
+            .place()
+            .t(style::HEADER)
+            .l(style::PAGE_PAD)
+            .r(style::PAGE_PAD)
+            .b(0);
+
+        self.find(String::new());
+    }
+}
+
+impl BrowsePage {
+    fn find(mut self: Weak<Self>, text: String) {
+        self.query += 1;
+        let query = self.query;
+        let sort = self.sort;
+
+        backend::load(
+            "searching Thunderstore",
+            move |forge, progress| async move {
+                let index = backend::index(forge, &progress).await?;
+                let profile = backend::profile(forge, &progress).await?;
+                let installed: HashSet<String> = profile
+                    .lock()
+                    .await?
+                    .packages
+                    .iter()
+                    .map(|package| package.id.to_string())
+                    .collect();
+
+                let mut found = index.search(&text);
+                if sort == Sort::Downloads {
+                    found.sort_by_key(|package| Reverse(package.downloads));
+                }
+                let hits = found
+                    .iter()
+                    .take(SHOWN)
+                    .map(|package| {
+                        let id = package.id.to_string();
+                        let version = package
+                            .latest()
+                            .map(|latest| latest.version.to_string())
+                            .unwrap_or_default();
+                        Hit {
+                            installed: installed.contains(&id),
+                            id,
+                            version,
+                            downloads: compact(package.downloads),
+                            // One flowing text, the label wraps it by itself.
+                            description: package
+                                .description
+                                .split_whitespace()
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        }
+                    })
+                    .collect();
+                Ok(Found {
+                    query,
+                    total: found.len(),
+                    hits,
+                })
+            },
+            move |result| {
+                if !self.is_ok() {
+                    return;
+                }
+                match result {
+                    Ok(found) if found.query == self.query => {
+                        self.subtitle.set_text(if found.total > found.hits.len() {
+                            format!(
+                                "{} packages, the first {} are shown",
+                                found.total,
+                                found.hits.len()
+                            )
+                        } else {
+                            format!("{} packages", found.total)
+                        });
+                        self.hits = found.hits;
+                        self.table.reload_data();
+                    }
+                    Ok(_) => {}
+                    Err(error) => toast::failure(&error),
+                }
+            },
+        );
+    }
+
+    fn refresh(self: Weak<Self>) {
+        self.find(self.search.text().to_owned());
+    }
+
+    fn add(self: Weak<Self>, index: usize) {
+        let Some(hit) = self.hits.get(index) else {
+            return;
+        };
+        let id = hit.id.clone();
+        backend::change(
+            "adding the mod",
+            |forge, progress| async move {
+                let profile = backend::profile(forge, &progress).await?;
+                let (id, change) = forge
+                    .add(&profile, &id, VersionReq::Latest, &progress)
+                    .await?;
+                forge.sync(&profile, &progress).await?;
+                Ok(format!("added {id}, {}", lock_change_summary(&change)))
+            },
+            move |result| {
+                match result {
+                    Ok(text) => toast::success(text),
+                    Err(error) => toast::failure(&error),
+                }
+                if self.is_ok() {
+                    self.refresh();
+                }
+            },
+        );
+    }
+}
+
+impl TableData for BrowsePage {
+    fn cell_height(&self, _: usize) -> f32 {
+        ROW_HEIGHT
+    }
+
+    fn number_of_cells(&self) -> usize {
+        self.hits.len()
+    }
+
+    fn setup_cell(&mut self, index: usize, registry: &mut CellRegistry) -> Weak<dyn View> {
+        let cell = registry.cell::<HitCell>();
+        cell.set_hit(index, weak_from_ref(self), &self.hits[index]);
+        cell
+    }
+
+    fn cell_selected(&mut self, index: usize) {
+        let page = weak_from_ref(self);
+        if let Some(hit) = self.hits.get(index) {
+            ModInfo::open(&hit.id, move |changed| {
+                if changed && page.is_ok() {
+                    page.refresh();
+                }
+            });
+        }
+    }
+}
+
+#[view]
+struct HitCell {
+    index: usize,
+    page: Weak<BrowsePage>,
+
+    #[init]
+    icon: ModIcon,
+    name: Label,
+    description: Label,
+    version: Pill,
+    downloads: Pill,
+    installed: Label,
+    add: Button,
+    line: Container,
+}
+
+impl Setup for HitCell {
+    fn setup(self: Weak<Self>) {
+        self.icon.place().l(4).t(TOP_LINE).size(ICON, ICON);
+
+        style::body(self.name);
+        self.name.set_ellipsize(true);
+        self.name
+            .place()
+            .t(TOP_LINE + 2.0)
+            .l(TEXT_LEFT)
+            .r(330)
+            .h(20);
+
+        // The whole row width and 2 lines. Thunderstore caps a description at
+        // 250 characters, so at a normal window size nothing is cut. A click
+        // on the row opens the details with the full text in any case.
+        style::dim(self.description);
+        self.description.set_multiline(true);
+        self.description
+            .set_vertical_alignment(VerticalAlignment::Top);
+        self.description
+            .place()
+            .t(TOP_LINE + 30.0)
+            .l(TEXT_LEFT)
+            .r(16)
+            .h(36);
+
+        style::dim(self.installed);
+        self.installed.set_text("installed");
+        self.installed.set_text_color(colors::OK);
+        self.installed.set_alignment(TextAlignment::Center);
+        self.installed.place().r(16).t(TOP_LINE + 4.0).size(84, 16);
+
+        style::primary(self.add, "add");
+        self.add.place().r(16).t(TOP_LINE - 2.0).size(84, 28);
+        self.add.on_tap(move || {
+            if self.page.is_ok() {
+                self.page.add(self.index);
+            }
+        });
+
+        // The wash says the row can be clicked, the click opens the details.
+        self.enable_hover();
+        self.touch().hovered.val(self, move |hovered| {
+            self.set_color(if hovered {
+                colors::NAV_HOVER_BG.into()
+            } else {
+                UIColor::from(colors::CLEAR)
+            });
+        });
+
+        self.line.set_color(colors::BORDER);
+        self.line.place().l(0).r(0).b(0).h(1);
+    }
+}
+
+impl HitCell {
+    fn set_hit(mut self: Weak<Self>, index: usize, page: Weak<BrowsePage>, hit: &Hit) {
+        self.index = index;
+        self.page = page;
+        self.icon.show(&hit.id, &hit.version);
+        self.name.set_text(&hit.id);
+        self.description.set_text(&hit.description);
+
+        // The pills sit right to left, each as wide as its text.
+        let downloads = self.downloads.set("pill_downloads.svg", &hit.downloads);
+        self.downloads
+            .place()
+            .clear()
+            .r(PILLS_RIGHT)
+            .t(TOP_LINE)
+            .size(downloads, pill::HEIGHT);
+        let version = self.version.set("pill_version.svg", &hit.version);
+        self.version
+            .place()
+            .clear()
+            .r(PILLS_RIGHT + downloads + PILL_GAP)
+            .t(TOP_LINE)
+            .size(version, pill::HEIGHT);
+        self.installed.set_hidden(!hit.installed);
+        self.add.set_hidden(hit.installed);
+    }
+}

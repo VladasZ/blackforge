@@ -6,7 +6,10 @@ use blackforge_core::{
     launch::{LaunchInput, Os, doorstop_major, inherited_env, plan, spawn},
 };
 
-use crate::{Context, ui::print_table};
+use crate::{
+    Context,
+    ui::{hint, print_table},
+};
 
 pub async fn run(context: &Context, game_dir: Option<PathBuf>, game_args: &[String]) -> Result<()> {
     let profile = context.profile().await?;
@@ -45,11 +48,11 @@ pub async fn doctor(context: &Context) -> Result<()> {
             Status::Warning => "warning",
             Status::Problem => "problem",
         };
-        rows.push(vec![
-            status.to_owned(),
-            check.name.to_owned(),
-            check.detail.clone(),
-        ]);
+        let detail = match check.fix {
+            Some(fix) => format!("{}, {}", check.detail, hint(fix)),
+            None => check.detail.clone(),
+        };
+        rows.push(vec![status.to_owned(), check.name.to_owned(), detail]);
     }
     print_table(&rows);
     if checks.iter().any(|check| check.status == Status::Problem) {

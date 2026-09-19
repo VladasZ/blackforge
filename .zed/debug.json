@@ -1,0 +1,14 @@
+[
+  {
+    "label": "Debug Blackforge",
+    "adapter": "CodeLLDB",
+    "build": { "command": "cargo", "args": ["build", "-p", "blackforge"] },
+    "sourceLanguages": ["rust"],
+  },
+  {
+    "label": "Debug Blackforge CLI",
+    "adapter": "CodeLLDB",
+    "build": { "command": "cargo", "args": ["build", "-p", "blackforge-cli"] },
+    "sourceLanguages": ["rust"],
+  },
+]

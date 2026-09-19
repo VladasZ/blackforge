@@ -38,6 +38,10 @@ impl DataDir {
         self.root.join("cache")
     }
 
+    pub fn icons_dir(&self) -> PathBuf {
+        self.root.join("icons")
+    }
+
     pub fn index_dir(&self) -> PathBuf {
         self.root.join("index")
     }

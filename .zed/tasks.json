@@ -1,0 +1,12 @@
+[
+  {
+    "label": "Blackforge",
+    "command": "cargo run -p blackforge",
+    "env": { "RUST_BACKTRACE": "1" },
+  },
+  {
+    "label": "Blackforge CLI",
+    "command": "cargo run -p blackforge-cli -- list",
+    "env": { "RUST_BACKTRACE": "1" },
+  },
+]
