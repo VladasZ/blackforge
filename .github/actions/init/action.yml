@@ -11,5 +11,12 @@ runs:
     - uses: VladasZ/rustscript@v0.1
     - shell: bash
       run: |
+        # The NixOS runners keep cargo and the other tools in these folders, and a
+        # plain step does not get them. The release scripts call cargo metadata,
+        # so every later step of the job needs this PATH, not only with-secrets.sh.
+        echo "/run/current-system/sw/bin" >> "$GITHUB_PATH"
+        echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
+    - shell: bash
+      run: |
         set -euo pipefail
         git -c url."https://github.com/".insteadOf="git@github.com:" submodule update --init --recursive
