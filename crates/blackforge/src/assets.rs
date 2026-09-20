@@ -20,12 +20,12 @@ pub fn load() {
             include_bytes!("../../../assets/images/nav_share.svg"),
         ),
         (
-            "nav_game.svg",
-            include_bytes!("../../../assets/images/nav_game.svg"),
-        ),
-        (
             "nav_doctor.svg",
             include_bytes!("../../../assets/images/nav_doctor.svg"),
+        ),
+        (
+            "open_page.svg",
+            include_bytes!("../../../assets/images/open_page.svg"),
         ),
         (
             "pill_downloads.svg",

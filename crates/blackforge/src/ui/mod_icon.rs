@@ -31,6 +31,12 @@ impl Setup for ModIcon {
 }
 
 impl ModIcon {
+    /// Back to the neutral square, for a reused row that has no mod.
+    pub fn clear(mut self: Weak<Self>) {
+        self.wanted.clear();
+        self.picture.set_hidden(true);
+    }
+
     pub fn show(mut self: Weak<Self>, id: &str, version: &str) {
         let key = format!("{id}-{version}");
         if self.wanted == key {

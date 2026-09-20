@@ -5,6 +5,7 @@ use std::{cmp::Reverse, collections::HashSet};
 use blackforge_core::manifest::VersionReq;
 use hilen::{
     refs::{Weak, weak_from_ref},
+    system::open_url,
     ui::{
         Button, CellRegistry, Container, DropDown, Label, Setup, TableData, TableView,
         TextAlignment, TextField, ToLabel, UIColor, VerticalAlignment, View, ViewData, ViewTouch,
@@ -16,6 +17,7 @@ use crate::{
     backend,
     ui::{
         colors,
+        icon_button::{self, IconButton},
         mod_icon::ModIcon,
         mod_info::ModInfo,
         mods_page::lock_change_summary,
@@ -27,9 +29,14 @@ use crate::{
 const ROW_HEIGHT: f32 = 88.0;
 const SEARCH_WIDTH: f32 = 340.0;
 const SORT_WIDTH: f32 = 150.0;
-/// The pills end where the add button starts, with a gap.
-const PILLS_RIGHT: f32 = 116.0;
+const ADD_WIDTH: f32 = 84.0;
+/// The page button sits left of the add button.
+const PAGE_RIGHT: f32 = 16.0 + ADD_WIDTH + 8.0;
+/// The pills end where the page button starts, with a gap.
+const PILLS_RIGHT: f32 = PAGE_RIGHT + icon_button::SIZE + 16.0;
 const PILL_GAP: f32 = 8.0;
+/// The name ends where the pills start, 2 pills fit in this room.
+const NAME_RIGHT: f32 = PILLS_RIGHT + 214.0;
 /// Where the first line of a row starts: the name, the pills and the button.
 const TOP_LINE: f32 = 12.0;
 const ICON: f32 = 40.0;
@@ -64,6 +71,7 @@ struct Hit {
     version: String,
     downloads: String,
     description: String,
+    page_url: String,
     installed: bool,
 }
 
@@ -179,6 +187,7 @@ impl BrowsePage {
                                 .split_whitespace()
                                 .collect::<Vec<_>>()
                                 .join(" "),
+                            page_url: package.package_url.clone(),
                         }
                     })
                     .collect();
@@ -215,6 +224,15 @@ impl BrowsePage {
 
     fn refresh(self: Weak<Self>) {
         self.find(self.search.text().to_owned());
+    }
+
+    fn open_page(self: Weak<Self>, index: usize) {
+        let Some(hit) = self.hits.get(index) else {
+            return;
+        };
+        if let Err(error) = open_url(&hit.page_url) {
+            toast::error(format!("cannot open the page: {error}"));
+        }
     }
 
     fn add(self: Weak<Self>, index: usize) {
@@ -284,6 +302,7 @@ struct HitCell {
     version: Pill,
     downloads: Pill,
     installed: Label,
+    open_page: IconButton,
     add: Button,
     line: Container,
 }
@@ -298,7 +317,7 @@ impl Setup for HitCell {
             .place()
             .t(TOP_LINE + 2.0)
             .l(TEXT_LEFT)
-            .r(330)
+            .r(NAME_RIGHT)
             .h(20);
 
         // The whole row width and 2 lines. Thunderstore caps a description at
@@ -319,10 +338,26 @@ impl Setup for HitCell {
         self.installed.set_text("installed");
         self.installed.set_text_color(colors::OK);
         self.installed.set_alignment(TextAlignment::Center);
-        self.installed.place().r(16).t(TOP_LINE + 4.0).size(84, 16);
+        self.installed
+            .place()
+            .r(16)
+            .t(TOP_LINE + 4.0)
+            .size(ADD_WIDTH, 16);
+
+        self.open_page.set_icon("open_page.svg");
+        self.open_page
+            .place()
+            .r(PAGE_RIGHT)
+            .t(TOP_LINE - 2.0)
+            .size(icon_button::SIZE, icon_button::SIZE);
+        self.open_page.tapped.sub(move || {
+            if self.page.is_ok() {
+                self.page.open_page(self.index);
+            }
+        });
 
         style::primary(self.add, "add");
-        self.add.place().r(16).t(TOP_LINE - 2.0).size(84, 28);
+        self.add.place().r(16).t(TOP_LINE - 2.0).size(ADD_WIDTH, 28);
         self.add.on_tap(move || {
             if self.page.is_ok() {
                 self.page.add(self.index);

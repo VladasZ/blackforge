@@ -13,9 +13,13 @@ use tokio::{fs, task::spawn_blocking};
 
 use crate::{
     error::{Error, IoContext, Result},
+    ident::PackageId,
     profile::Profile,
     util::{exists, walk_files},
 };
+
+/// A shorter shared part matches by chance too often.
+const MIN_SHARED: usize = 4;
 
 const TYPE_PREFIX: &str = "# Setting type:";
 const DEFAULT_PREFIX: &str = "# Default value:";
@@ -31,6 +35,28 @@ pub struct Setting {
     pub default: Option<String>,
     pub acceptable: Option<String>,
     line: usize,
+}
+
+impl Setting {
+    /// The value as on or off, `None` when the setting is not a boolean.
+    /// `BepInEx` names the type in a comment. A file written by hand has no
+    /// such comment, there the value alone decides.
+    pub fn as_bool(&self) -> Option<bool> {
+        let boolean = self
+            .setting_type
+            .as_deref()
+            .is_none_or(|name| name.eq_ignore_ascii_case("Boolean"));
+        if !boolean {
+            return None;
+        }
+        if self.value.eq_ignore_ascii_case("true") {
+            Some(true)
+        } else if self.value.eq_ignore_ascii_case("false") {
+            Some(false)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -128,6 +154,42 @@ impl Pending {
             self.acceptable = line.split_once(':').map(|(_, text)| text.trim().to_owned());
         }
     }
+}
+
+/// Letters and digits only, in lower case, so `valheim_mod.HudCompass` and
+/// `HUDCompass` compare as equal text.
+fn plain(text: &str) -> String {
+    text.chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|letter| letter.to_ascii_lowercase())
+        .collect()
+}
+
+/// The package a config file most likely belongs to. A mod names its config
+/// after its plugin id, `owner.mod_name.cfg` or close to it, and no file says
+/// which package that is, so the names are compared. The longest shared name
+/// wins, the owner in the file name breaks a tie.
+pub fn package_of<'a>(
+    file: &str,
+    packages: impl IntoIterator<Item = &'a PackageId>,
+) -> Option<&'a PackageId> {
+    let name = file.rsplit('/').next().unwrap_or(file);
+    let stem = plain(name.strip_suffix(".cfg").unwrap_or(name));
+    packages
+        .into_iter()
+        .filter_map(|id| {
+            let package = plain(id.name());
+            let shared = if stem.contains(&package) {
+                package.len()
+            } else if package.contains(&stem) {
+                stem.len()
+            } else {
+                return None;
+            };
+            (shared >= MIN_SHARED).then(|| ((shared, stem.contains(&plain(id.owner()))), id))
+        })
+        .max_by_key(|(score, _)| *score)
+        .map(|(_, id)| id)
 }
 
 fn config_dir(profile: &Profile) -> PathBuf {

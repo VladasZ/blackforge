@@ -1,6 +1,7 @@
 //! The bridge between the views and the core. A core operation is async and
 //! runs on the tokio runtime of the engine. Its progress goes to the status
-//! bar and its result comes back on the main thread.
+//! bar and its result comes back on the main thread. Every operation leaves
+//! its start, its time and its error in the log file of the engine.
 
 use std::{
     sync::{
@@ -134,6 +135,9 @@ fn start<T, Fut>(
 {
     let id = status::begin(title);
     let (progress, mut events) = Progress::channel();
+    let title = title.to_owned();
+    let started = Instant::now();
+    log::info!("{title}: start");
 
     spawn(async move {
         while let Some(event) = events.recv().await {
@@ -146,6 +150,11 @@ fn start<T, Fut>(
             Ok(forge) => work(forge, progress).await,
             Err(error) => Err(error),
         };
+        let took = started.elapsed().as_millis();
+        match &result {
+            Ok(_) => log::info!("{title}: done in {took} ms"),
+            Err(error) => log::error!("{title}: failed in {took} ms: {error:#}"),
+        }
         on_main(move || {
             status::end(id);
             done(result);

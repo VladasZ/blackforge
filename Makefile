@@ -1,5 +1,8 @@
 include build/common.mk
 
+run:
+	cargo run --release
+
 check:
 	typos
 	cargo fmt --all -- --check

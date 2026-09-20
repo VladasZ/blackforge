@@ -114,7 +114,7 @@ fn wait_for_exit(mut child: Child) {
         on_main(move || {
             RUNNING.store(false, Ordering::SeqCst);
             match status {
-                Ok(status) if status.success() => {}
+                Ok(status) if status.success() => log::info!("the game exited with {status}"),
                 Ok(status) => toast::error(format!("the game exited with {status}")),
                 Err(error) => toast::error(format!("cannot wait for the game: {error}")),
             }

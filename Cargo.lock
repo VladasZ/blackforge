@@ -486,6 +486,7 @@ dependencies = [
  "anyhow",
  "hilen",
  "log",
+ "noise",
  "plat 0.9.0",
  "serde",
  "web-sys",

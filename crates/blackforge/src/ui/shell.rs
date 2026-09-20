@@ -11,7 +11,6 @@ use crate::ui::{
     colors,
     configs_page::ConfigsPage,
     doctor_page::DoctorPage,
-    game_page::GamePage,
     mods_page::ModsPage,
     page::Page,
     share_page::SharePage,
@@ -75,7 +74,6 @@ impl Shell {
             Page::Browse => self.content.add_view::<BrowsePage>(),
             Page::Configs => self.content.add_view::<ConfigsPage>(),
             Page::Share => self.content.add_view::<SharePage>(),
-            Page::Game => self.content.add_view::<GamePage>(),
             Page::Doctor => self.content.add_view::<DoctorPage>(),
         };
         view.place().back();

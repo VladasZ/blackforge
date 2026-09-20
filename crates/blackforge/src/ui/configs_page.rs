@@ -1,24 +1,38 @@
 //! The config files of the mods: pick a file on the left, edit its settings
-//! on the right. A value is saved when its field loses the focus.
+//! on the right. A value is saved when its field loses the focus, an on or
+//! off value has a switch and is saved at once.
 
-use blackforge_core::config::{Setting, find, list, read, write};
+use blackforge_core::config::{Setting, find, list, package_of, read, write};
 use hilen::{
     Event,
     refs::{Weak, weak_from_ref},
     ui::{
-        CellRegistry, Container, Label, Setup, TableData, TableView, TextAlignment, TextField,
-        View, ViewData, view,
+        CellRegistry, Container, Label, Setup, Switch, TableData, TableView, TextAlignment,
+        TextField, View, ViewData, ViewTouch, view,
     },
 };
 
 use crate::{
     backend,
-    ui::{colors, style, toast},
+    ui::{colors, mod_icon::ModIcon, style, toast},
 };
 
 const FILES_WIDTH: f32 = 290.0;
-const FILE_HEIGHT: f32 = 36.0;
+const CARD_HEIGHT: f32 = 56.0;
+const CARD_GAP: f32 = 8.0;
+const FILE_HEIGHT: f32 = CARD_HEIGHT + CARD_GAP;
+const FILE_ICON: f32 = 36.0;
+/// The name and the file start right of the icon.
+const FILE_TEXT_LEFT: f32 = 10.0 + FILE_ICON + 12.0;
 const SETTING_HEIGHT: f32 = 62.0;
+
+/// One config file and the mod it most likely belongs to.
+#[derive(Clone, Debug)]
+struct FileRow {
+    file: String,
+    /// The id and the version of the mod, for the name and the icon.
+    package: Option<(String, String)>,
+}
 
 #[view]
 pub struct ConfigsPage {
@@ -37,7 +51,7 @@ impl Setup for ConfigsPage {
 
         style::dim(self.subtitle);
         self.subtitle
-            .set_text("a value is saved when its field loses the focus");
+            .set_text("a value is saved when its field loses the focus, a switch at once");
         self.subtitle.place().t(56).l(style::PAGE_PAD).size(500, 16);
 
         style::dim(self.empty);
@@ -74,7 +88,7 @@ struct ConfigFiles {
     /// How many files the profile has.
     loaded: Event<usize>,
 
-    names: Vec<String>,
+    rows: Vec<FileRow>,
     selected: Option<usize>,
 
     #[init]
@@ -91,16 +105,30 @@ impl Setup for ConfigFiles {
             "reading the configs",
             |forge, progress| async move {
                 let profile = backend::profile(forge, &progress).await?;
-                Ok(list(&profile).await?)
+                let lock = profile.lock().await?;
+                let rows = list(&profile)
+                    .await?
+                    .into_iter()
+                    .map(|file| {
+                        let id = package_of(&file, lock.packages.iter().map(|package| &package.id));
+                        let package = lock
+                            .packages
+                            .iter()
+                            .find(|package| Some(&package.id) == id)
+                            .map(|package| (package.id.to_string(), package.version.to_string()));
+                        FileRow { file, package }
+                    })
+                    .collect();
+                Ok(rows)
             },
-            move |result| {
+            move |result: anyhow::Result<Vec<FileRow>>| {
                 if !self.is_ok() {
                     return;
                 }
                 match result {
-                    Ok(names) => {
-                        self.loaded.trigger(names.len());
-                        self.names = names;
+                    Ok(rows) => {
+                        self.loaded.trigger(rows.len());
+                        self.rows = rows;
                         self.table.reload_data();
                     }
                     Err(error) => toast::failure(&error),
@@ -116,49 +144,106 @@ impl TableData for ConfigFiles {
     }
 
     fn number_of_cells(&self) -> usize {
-        self.names.len()
+        self.rows.len()
     }
 
     fn setup_cell(&mut self, index: usize, registry: &mut CellRegistry) -> Weak<dyn View> {
         let cell = registry.cell::<FileCell>();
-        cell.set_file(&self.names[index], self.selected == Some(index));
+        cell.card
+            .set_file(&self.rows[index], self.selected == Some(index));
         cell
     }
 
     fn cell_selected(&mut self, index: usize) {
-        let Some(name) = self.names.get(index) else {
+        let Some(row) = self.rows.get(index) else {
             return;
         };
         self.selected = Some(index);
-        self.picked.trigger(name.clone());
+        self.picked.trigger(row.file.clone());
         self.table.reload_data();
     }
 }
 
+/// A row of the table. The card is shorter than the row, that is the gap
+/// between two cards.
 #[view]
 struct FileCell {
     #[init]
-    name: Label,
+    card: FileCard,
 }
 
 impl Setup for FileCell {
     fn setup(self: Weak<Self>) {
-        self.set_corner_radius(7);
-        style::body(self.name);
-        self.name.set_text_size(13);
-        self.name.set_ellipsize(true);
-        self.name.place().l(10).r(8).t(0).b(0);
+        self.card.place().t(0).l(0).r(0).h(CARD_HEIGHT);
     }
 }
 
-impl FileCell {
-    fn set_file(self: Weak<Self>, name: &str, selected: bool) {
-        self.name.set_text(name.trim_end_matches(".cfg"));
-        if selected {
+#[view]
+struct FileCard {
+    selected: bool,
+
+    #[init]
+    icon: ModIcon,
+    name: Label,
+    file: Label,
+}
+
+impl Setup for FileCard {
+    fn setup(self: Weak<Self>) {
+        style::card(self);
+
+        self.icon
+            .place()
+            .l(10)
+            .center_y()
+            .size(FILE_ICON, FILE_ICON);
+
+        style::body(self.name);
+        self.name.set_ellipsize(true);
+        self.name.place().t(9).l(FILE_TEXT_LEFT).r(10).h(20);
+
+        style::dim(self.file);
+        self.file.set_ellipsize(true);
+        self.file.place().t(31).l(FILE_TEXT_LEFT).r(10).h(16);
+
+        // The wash says the card can be clicked, the click opens the file.
+        self.enable_hover();
+        self.touch()
+            .hovered
+            .val(self, move |hovered| self.refresh(hovered));
+    }
+}
+
+impl FileCard {
+    fn set_file(mut self: Weak<Self>, row: &FileRow, selected: bool) {
+        let stem = row.file.trim_end_matches(".cfg");
+        if let Some((id, version)) = &row.package {
+            self.icon.show(id, version);
+            // `Owner-Name`, the name alone is the title of the card.
+            self.name
+                .set_text(id.split_once('-').map_or(stem, |(_, name)| name));
+        } else {
+            self.icon.clear();
+            self.name.set_text(stem);
+        }
+        self.file.set_text(&row.file);
+
+        self.selected = selected;
+        self.refresh(self.is_hovered());
+    }
+
+    fn refresh(self: Weak<Self>, hovered: bool) {
+        if self.selected {
             self.set_color(colors::NAV_ACTIVE_BG);
+            self.set_border_color(colors::ACCENT);
             self.name.set_text_color(colors::ACCENT);
         } else {
-            self.set_color(colors::CLEAR);
+            self.set_color(if hovered {
+                colors::NAV_HOVER_BG
+            } else {
+                colors::CARD_BG
+            });
+            self.set_border_color(colors::BORDER);
             self.name.set_text_color(colors::FG);
         }
     }
@@ -312,6 +397,7 @@ struct SettingCell {
     key: Label,
     detail: Label,
     value: TextField,
+    toggle: Switch,
     line: Container,
 }
 
@@ -334,6 +420,13 @@ impl Setup for SettingCell {
         self.value.editing_ended.val(move |text| {
             if self.page.is_ok() {
                 self.page.save(self.index, text);
+            }
+        });
+
+        self.toggle.place().r(16).center_y().size(44, 24);
+        self.toggle.on_change(move |on| {
+            if self.page.is_ok() {
+                self.page.save(self.index, on.to_string());
             }
         });
 
@@ -361,6 +454,17 @@ impl SettingCell {
             detail.push_str(&format!("default {default}"));
         }
         self.detail.set_text(detail);
-        self.value.set_text(&setting.value);
+
+        let on = setting.as_bool();
+        self.value.set_hidden(on.is_some());
+        self.toggle.set_hidden(on.is_none());
+        match on {
+            Some(on) => {
+                self.toggle.set_on(on);
+            }
+            None => {
+                self.value.set_text(&setting.value);
+            }
+        }
     }
 }

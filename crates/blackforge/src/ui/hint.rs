@@ -8,7 +8,7 @@ use blackforge_core::{Error as CoreError, fix::Fix};
 pub fn hint(fix: Fix) -> Option<&'static str> {
     match fix {
         Fix::CreateProfile | Fix::PickProfile => None,
-        Fix::GiveGameFolder => Some("pick the folder on the Game page"),
+        Fix::GiveGameFolder => Some("press Run game to pick the folder by hand"),
         Fix::Sync => Some("press sync on the Mods page"),
     }
 }

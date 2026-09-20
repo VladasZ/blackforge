@@ -26,6 +26,7 @@ pub struct Content {
 
     #[init]
     ground: Textured,
+    specks: Textured,
     vignette: Container,
     sign: Sign,
     description: Embossed,
@@ -44,6 +45,7 @@ pub struct Content {
 impl Setup for Content {
     fn setup(self: Weak<Self>) {
         self.ground.place().back();
+        self.specks.place().back();
         self.vignette.place().back();
 
         self.description
@@ -125,6 +127,8 @@ impl Content {
     fn restyle(self: Weak<Self>) {
         self.ground
             .set_texture(art::ground(), art::GROUND_TILE, (true, true));
+        self.specks
+            .set_texture(art::specks(), art::SPECKS_TILE, (true, true));
         self.vignette.apply_gradient(Gradient::radial_at(
             (0.5, 0.3),
             colors::VIGNETTE_START.resolve(),

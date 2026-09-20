@@ -1,4 +1,5 @@
-//! The mods of the active profile: enable, disable, remove, update and sync.
+//! The game card with the run button, and under it the mods of the active
+//! profile: enable, disable, remove, update and sync.
 
 use std::collections::HashMap;
 
@@ -13,9 +14,18 @@ use hilen::{
 
 use crate::{
     backend,
-    ui::{colors, mod_icon::ModIcon, mod_info::ModInfo, style, toast},
+    ui::{
+        colors,
+        game_panel::{self, GamePanel},
+        mod_icon::ModIcon,
+        mod_info::ModInfo,
+        style, toast,
+    },
 };
 
+const GAME_T: f32 = 24.0;
+/// The mods header and the table sit this far under the top of the page.
+const MODS_T: f32 = GAME_T + game_panel::HEIGHT;
 const ROW_HEIGHT: f32 = 58.0;
 const ICON: f32 = 36.0;
 /// The name and the detail start right of the icon.
@@ -67,6 +77,7 @@ pub struct ModsPage {
     newest: HashMap<String, String>,
 
     #[init]
+    game: GamePanel,
     title: Label,
     subtitle: Label,
     check: Button,
@@ -78,16 +89,31 @@ pub struct ModsPage {
 
 impl Setup for ModsPage {
     fn setup(self: Weak<Self>) {
+        self.game
+            .place()
+            .t(GAME_T)
+            .l(style::PAGE_PAD)
+            .r(style::PAGE_PAD)
+            .h(game_panel::HEIGHT);
+
         style::title(self.title, "Mods");
-        self.title.place().t(24).l(style::PAGE_PAD).size(300, 30);
+        self.title
+            .place()
+            .t(MODS_T + 24.0)
+            .l(style::PAGE_PAD)
+            .size(300, 30);
 
         style::dim(self.subtitle);
-        self.subtitle.place().t(56).l(style::PAGE_PAD).size(500, 16);
+        self.subtitle
+            .place()
+            .t(MODS_T + 56.0)
+            .l(style::PAGE_PAD)
+            .size(500, 16);
 
         style::primary(self.sync, "sync");
         self.sync
             .place()
-            .t(28)
+            .t(MODS_T + 28.0)
             .r(style::PAGE_PAD)
             .size(76, style::BUTTON_H);
         self.sync.on_tap(move || self.sync_profile());
@@ -95,7 +121,7 @@ impl Setup for ModsPage {
         style::ghost(self.update, "update all");
         self.update
             .place()
-            .t(28)
+            .t(MODS_T + 28.0)
             .r(style::PAGE_PAD + 84.0)
             .size(100, style::BUTTON_H);
         self.update.on_tap(move || self.update_all());
@@ -103,7 +129,7 @@ impl Setup for ModsPage {
         style::ghost(self.check, "check for updates");
         self.check
             .place()
-            .t(28)
+            .t(MODS_T + 28.0)
             .r(style::PAGE_PAD + 192.0)
             .size(140, style::BUTTON_H);
         self.check.on_tap(move || self.check_updates());
@@ -113,13 +139,18 @@ impl Setup for ModsPage {
             .set_text("no mods yet, add some on the Browse page");
         self.empty.set_alignment(TextAlignment::Center);
         self.empty.set_hidden(true);
-        self.empty.place().t(style::HEADER + 40.0).l(0).r(0).h(20);
+        self.empty
+            .place()
+            .t(MODS_T + style::HEADER + 40.0)
+            .l(0)
+            .r(0)
+            .h(20);
 
         self.table.set_data_source(self).register_cell::<ModCell>();
         style::table(self.table);
         self.table
             .place()
-            .t(style::HEADER)
+            .t(MODS_T + style::HEADER)
             .l(style::PAGE_PAD)
             .r(style::PAGE_PAD)
             .b(0);

@@ -22,6 +22,20 @@ const PARALLEL_CHUNKS: usize = 4;
 /// Commands that only read the list accept a copy this old.
 pub const FRESH_ENOUGH: Duration = Duration::from_hours(1);
 
+/// Thunderstore lists other mod managers next to the mods. They are desktop
+/// programs and do nothing inside a profile, so search leaves them out.
+const MOD_MANAGERS: [(&str, &str); 3] = [
+    ("ebkr", "r2modman"),
+    ("Kesomannen", "GaleModManager"),
+    ("Omnivore", "OmnivoreModManager"),
+];
+
+fn is_mod_manager(id: &PackageId) -> bool {
+    MOD_MANAGERS
+        .iter()
+        .any(|(owner, name)| id.owner() == *owner && id.name() == *name)
+}
+
 /// Every package of one Thunderstore community.
 #[derive(Clone, Debug)]
 pub struct PackageIndex {
@@ -192,7 +206,7 @@ impl PackageIndex {
         let mut hits: Vec<(bool, &Package)> = self
             .packages
             .iter()
-            .filter(|package| !package.deprecated)
+            .filter(|package| !package.deprecated && !is_mod_manager(&package.id))
             .filter_map(|package| {
                 let id = package.id.to_string().to_lowercase();
                 let description = package.description.to_lowercase();

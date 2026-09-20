@@ -31,20 +31,26 @@ thread_local! {
 }
 
 pub fn success(text: impl Into<String>) {
-    show(text.into(), colors::OK);
+    let text = text.into();
+    log::info!("toast: {text}");
+    show(text, colors::OK);
 }
 
 pub fn info(text: impl Into<String>) {
-    show(text.into(), colors::ACCENT);
+    let text = text.into();
+    log::info!("toast: {text}");
+    show(text, colors::ACCENT);
 }
 
 pub fn error(text: impl Into<String>) {
-    show(text.into(), colors::BAD);
+    let text = text.into();
+    log::error!("toast: {text}");
+    show(text, colors::BAD);
 }
 
 /// A failed core operation, with the way out when the core knows one.
 pub fn failure(error: &anyhow::Error) {
-    show(describe(error), colors::BAD);
+    self::error(describe(error));
 }
 
 /// The engine only accepts a custom z before a view joins a superview, so
