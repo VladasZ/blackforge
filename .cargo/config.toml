@@ -1,0 +1,7 @@
+# A clean Windows has no vcruntime140.dll, so an exe that links the C runtime
+# as a DLL fails to start there before any of our code runs.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
