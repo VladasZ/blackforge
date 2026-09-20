@@ -14,7 +14,7 @@
         <title>blackforge</title>
         <meta
             name="description"
-            content="A Valheim mod manager for macOS, Windows and Linux. Install Thunderstore mods, manage profiles and edit mod settings."
+            content="A Valheim mod manager for macOS, Windows and Linux. Install Thunderstore mods and edit mod settings."
         />
         <style type="text/css">
             @font-face {
@@ -23,9 +23,26 @@
                 font-weight: 400 900;
                 font-display: swap;
             }
+            /* The same two palettes as the app, so the page does not flash
+               the wrong theme before the canvas takes over. */
+            :root {
+                color-scheme: light dark;
+                --bg: #e6d8b8;
+                --ink: #2c1d0f;
+                --ink-dim: #4a3519;
+                --title: #4a2c10;
+            }
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --bg: #17130f;
+                    --ink: #e6d6b5;
+                    --ink-dim: #c4b492;
+                    --title: #d2a75e;
+                }
+            }
             body {
                 margin: 0;
-                background: #141210;
+                background: var(--bg);
             }
             canvas {
                 display: block;
@@ -47,12 +64,12 @@
                 gap: 1rem;
                 padding: clamp(1.5rem, 6vw, 6rem);
                 text-align: left;
-                color: #e6d6b5;
+                color: var(--ink);
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
             }
             #fallback h1 {
                 font-family: Cinzel, Georgia, serif;
-                color: #d2a75e;
+                color: var(--title);
                 margin: 0;
                 font-size: 3rem;
                 font-weight: 700;
@@ -62,13 +79,13 @@
                 margin: 0;
                 max-width: 32rem;
                 line-height: 1.5;
-                color: #b6a68b;
+                color: var(--ink-dim);
             }
             #fallback a {
-                color: #d2a75e;
+                color: var(--title);
             }
             #fallback a:hover {
-                color: #ffffff;
+                color: var(--ink);
                 text-decoration-thickness: 3px;
             }
             /* The engine appends its canvas to the body once the module
@@ -85,7 +102,7 @@
             <h1>blackforge</h1>
             <p>A Valheim mod manager.</p>
             <p>
-                Browse and install mods, manage profiles and launch Valheim. Native builds for macOS, Windows and Linux.
+                Browse and install mods, edit their settings and launch Valheim. Native builds for macOS, Windows and Linux.
             </p>
             <p id="downloads">No release available yet.</p>
             <script src="downloads.js"></script>

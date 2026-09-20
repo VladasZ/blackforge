@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="3.125" viewBox="0 0 512 100">
+<defs>
+<filter id="grain" x="0" y="0" width="512" height="100" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feTurbulence type="fractalNoise" baseFrequency="0.0078 0.17" numOctaves="4" seed="4"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  3.2 0 0 0 -1.35" result="mask"/>
+<feFlood flood-color="DARK"/>
+<feComposite operator="in" in2="mask"/>
+</filter>
+<filter id="sheen" x="0" y="0" width="512" height="100" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feTurbulence type="fractalNoise" baseFrequency="0.0059 0.11" numOctaves="3" seed="17"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 2.8 0 0 -1.25" result="mask"/>
+<feFlood flood-color="LIGHT"/>
+<feComposite operator="in" in2="mask"/>
+</filter>
+<filter id="fine" x="0" y="0" width="512" height="100" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feTurbulence type="fractalNoise" baseFrequency="0.025 1.1" numOctaves="2" seed="9"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 2.6 0 -1.05" result="mask"/>
+<feFlood flood-color="DARK"/>
+<feComposite operator="in" in2="mask"/>
+</filter>
+<linearGradient id="plank" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#fff" stop-opacity="0.10"/>
+<stop offset="0.12" stop-color="#fff" stop-opacity="0"/>
+<stop offset="0.8" stop-color="#000" stop-opacity="0"/>
+<stop offset="1" stop-color="#000" stop-opacity="0.30"/>
+</linearGradient>
+</defs>
+<rect width="512" height="100" fill="BASE"/>
+<rect y="50" width="512" height="50" fill="#000" opacity="0.10"/>
+<rect width="512" height="100" filter="url(#grain)" opacity="0.85"/>
+<rect width="512" height="100" filter="url(#sheen)" opacity="0.55"/>
+<rect width="512" height="100" filter="url(#fine)" opacity="0.5"/>
+<rect width="512" height="50" fill="url(#plank)"/>
+<rect y="50" width="512" height="50" fill="url(#plank)"/>
+<rect width="512" height="1.5" fill="SEAM"/>
+<rect y="50" width="512" height="1.5" fill="SEAM"/>
+</svg>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="15" height="3" viewBox="0 0 120 24">
+<defs>
+<g id="shape">
+<path d="M60 2 L70 12 L60 22 L50 12 Z M60 7 L55 12 L60 17 L65 12 Z" fill-rule="evenodd"/>
+<path d="M38 12 L43 7.5 L48 12 L43 16.5 Z"/>
+<path d="M72 12 L77 7.5 L82 12 L77 16.5 Z"/>
+<path d="M0 11.5 H33 L36 12 L33 12.5 H0 Z"/>
+<path d="M120 11.5 H87 L84 12 L87 12.5 H120 Z"/>
+</g>
+</defs>
+<use href="#shape" y="1" fill="SHADE" fill-opacity="0.7"/>
+<use href="#shape" fill="INK"/>
+</svg>

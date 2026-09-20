@@ -2,7 +2,12 @@ pub mod colors;
 mod content;
 mod download_button;
 mod drop_menu;
+mod embossed;
+mod heading;
 mod page;
+mod plaque;
+mod sign;
+mod textured;
 
 use hilen::ui::UIManager;
 pub use page::LandingPage;

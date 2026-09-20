@@ -38,14 +38,14 @@ pub struct DropMenu {
 
 impl Setup for DropMenu {
     fn setup(self: Weak<Self>) {
-        self.set_color(colors::CARD_BG);
-        self.set_border_color(colors::BORDER);
+        self.set_gradient(colors::IRON_TOP, colors::IRON_BOTTOM);
+        self.set_border_color(colors::IRON_EDGE);
         self.set_border_width(1);
-        self.set_corner_radius(10);
+        self.set_corner_radius(5);
         self.set_shadow(Shadow {
             offset: (0, 12).into(),
             radius: 30.0,
-            color: colors::MENU_SHADOW,
+            color: colors::WOOD_TEXT_SHADOW,
         });
     }
 }
@@ -86,7 +86,7 @@ impl DropMenu {
                 head.set_alignment(TextAlignment::Left);
                 head.set_font(fonts::mono(600.0));
                 head.set_text_size(10.9);
-                head.set_text_color(colors::FG_DIM);
+                head.set_text_color(colors::IRON_TEXT_DIM);
                 head.set_letter_spacing(0.87);
                 head.set_text(arch.to_uppercase());
                 head.set_frame((PAD + 8.8 - text_margin(), y, inner, HEAD_HEIGHT));
@@ -101,9 +101,11 @@ impl DropMenu {
                 item.set_text(&choice.label);
                 item.set_font(fonts::mono(400.0));
                 item.set_text_size(13.6);
-                item.set_text_color(colors::FG);
-                item.set_color(colors::CLEAR);
-                item.set_corner_radius(6);
+                item.set_text_color(colors::IRON_TEXT);
+                item.set_color(colors::IRON_KEY);
+                item.set_border_color(colors::IRON_EDGE);
+                item.set_border_width(1);
+                item.set_corner_radius(3);
                 item.set_frame((
                     PAD + column as f32 * (item_width + ITEM_GAP),
                     y,
@@ -123,7 +125,7 @@ impl DropMenu {
             y += 6.4;
 
             let line = self.add_view::<Container>();
-            line.set_color(colors::BORDER);
+            line.set_color(colors::IRON_EDGE);
             line.set_frame((0.0, y, width, 1.0));
             y += 1.0 + 8.8;
 
@@ -132,7 +134,7 @@ impl DropMenu {
             note.set_alignment(TextAlignment::Left);
             note.set_font(fonts::inter(400.0));
             note.set_text_size(11.5);
-            note.set_text_color(colors::FG_DIM);
+            note.set_text_color(colors::IRON_TEXT_DIM);
             note.set_multiline(true);
             note.set_text(
                 "Ubuntu 23.10+ can't install .deb files from the App Center. Use the terminal:",
@@ -147,8 +149,8 @@ impl DropMenu {
             code.set_alignment(TextAlignment::Left);
             code.set_font(fonts::mono(400.0));
             code.set_text_size(11.5);
-            code.set_text_color(colors::FG);
-            code.set_color(colors::BORDER_SOFT);
+            code.set_text_color(colors::IRON_TEXT);
+            code.set_color(colors::IRON_EDGE);
             code.set_corner_radius(5);
             code.set_text(format!("  {hint}"));
             code.set_frame((12.8, y, note_width, 24.0));

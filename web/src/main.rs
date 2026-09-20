@@ -4,6 +4,7 @@
 
 mod api;
 mod app;
+mod art;
 mod fonts;
 mod model;
 mod net;
