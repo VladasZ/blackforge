@@ -4,6 +4,7 @@
 //! through [`progress::Progress`], so a command line and a graphical frontend
 //! can both sit on top of it. [`forge::Forge`] is the entry point.
 
+pub mod achievements;
 pub mod config;
 pub mod deploy;
 pub mod doctor;

@@ -16,6 +16,7 @@ use tokio::{
 };
 
 use crate::{
+    achievements,
     error::{Error, IoContext, Result},
     game::{GameDef, GameInstall, Target},
     util::exists,
@@ -61,6 +62,8 @@ pub struct LaunchPlan {
     pub cwd: PathBuf,
     /// Files to copy from the profile into the game folder first.
     pub game_files: Vec<String>,
+    /// Whether the achievements plugin goes into the profile first.
+    pub keep_achievements: bool,
 }
 
 pub fn preloader_path(profile_dir: &Path) -> PathBuf {
@@ -91,6 +94,9 @@ pub struct LaunchInput<'a> {
     pub profile_dir: &'a Path,
     pub doorstop_major: u32,
     pub game_args: &'a [String],
+    /// The setting of the user, it only has an effect where the game has
+    /// achievements.
+    pub keep_achievements: bool,
     /// Inherited values of the variables that the plan extends.
     pub inherited: &'a dyn Fn(&str) -> Option<String>,
 }
@@ -111,6 +117,10 @@ pub fn plan(input: &LaunchInput<'_>) -> Result<LaunchPlan> {
         )),
         Os::Linux | Os::MacIntel | Os::MacArm => Ok(unix_plan(input, preloader)),
     }
+}
+
+fn keeps_achievements(input: &LaunchInput<'_>) -> bool {
+    input.keep_achievements && achievements::applies_to(input.game)
 }
 
 fn doorstop_args(major: u32, preloader: String) -> Vec<String> {
@@ -156,6 +166,7 @@ fn windows_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
             DOORSTOP_CONFIG.to_owned(),
             DOORSTOP_VERSION.to_owned(),
         ],
+        keep_achievements: keeps_achievements(input),
     }
 }
 
@@ -231,6 +242,7 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
             env: Vec::new(),
             cwd,
             game_files: Vec::new(),
+            keep_achievements: keeps_achievements(input),
         };
     }
     LaunchPlan {
@@ -239,13 +251,17 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
         env,
         cwd,
         game_files: Vec::new(),
+        keep_achievements: keeps_achievements(input),
     }
 }
 
-/// Copies the Windows proxy files into the game folder. The config goes in
-/// switched off, so a plain start from Steam still gives the game without
-/// mods, and `run` switches it on through the command line.
+/// Puts the files of a start in place. The achievements plugin goes into the
+/// profile or comes out of it. The Windows proxy files are copied into the game
+/// folder, the config goes in switched off, so a plain start from Steam still
+/// gives the game without mods, and `run` switches it on through the command
+/// line.
 pub async fn prepare(plan: &LaunchPlan, profile_dir: &Path) -> Result<()> {
+    achievements::apply(profile_dir, plan.keep_achievements).await?;
     for name in &plan.game_files {
         let source = profile_dir.join(name);
         if !exists(&source).await {
@@ -321,6 +337,7 @@ mod tests {
             profile_dir: profile,
             doorstop_major: 4,
             game_args: args,
+            keep_achievements: true,
             inherited: &no_env,
         }
     }
@@ -363,6 +380,7 @@ mod tests {
         );
         assert!(plan.env.is_empty());
         assert!(plan.game_files.is_empty());
+        assert!(plan.keep_achievements);
         Ok(())
     }
 
@@ -382,6 +400,7 @@ mod tests {
             profile_dir: Path::new("/data/p"),
             doorstop_major: 4,
             game_args: &[],
+            keep_achievements: true,
             inherited: &inherited,
         })?;
         assert_eq!(
@@ -412,6 +431,8 @@ mod tests {
                 ("SteamAppId".to_owned(), "892970".to_owned()),
             ]
         );
+        // A server has no achievements, the setting of the user is dropped.
+        assert!(!plan.keep_achievements);
         Ok(())
     }
 

@@ -87,6 +87,7 @@ async fn run(cli: Cli) -> Result<()> {
             overwrite_configs,
         } => commands::profiles::deploy(&context, &path, overwrite_configs).await,
         Command::Doctor => commands::game::doctor(&context).await,
+        Command::Achievements { state } => commands::game::achievements(&context, state).await,
         Command::Portals { world, unpaired } => commands::world::portals(&world, unpaired).await,
         Command::Config(command) => commands::config::config(&context, command).await,
     }

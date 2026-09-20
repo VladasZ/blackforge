@@ -81,6 +81,7 @@ fn start(game_dir: Option<PathBuf>) {
                 profile_dir: profile.dir(),
                 doorstop_major,
                 game_args: &game_args,
+                keep_achievements: forge.keep_achievements().await?,
                 inherited: &inherited_env,
             })?;
             let child = spawn_game(&plan, profile.dir()).await?;

@@ -2,7 +2,7 @@ use std::fs::create_dir_all;
 
 use blackforge_core::paths::DataDir;
 use hilen::{
-    App, AppRunner, PinnedFuture,
+    App, AppRunner, PinnedFuture, Window,
     dispatch::after,
     refs::Own,
     store::OnDisk,
@@ -36,6 +36,7 @@ impl App for BlackforgeApp {
 
     fn after_launch(&self) {
         AppRunner::set_window_title("Blackforge");
+        Window::set_icon(include_bytes!("../../../assets/icon.png"));
         after(3.0, || crate::updater::check(|_| {}));
     }
 

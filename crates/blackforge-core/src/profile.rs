@@ -60,6 +60,9 @@ impl Profile {
 pub struct State {
     #[serde(default)]
     pub active_profile: Option<String>,
+    /// Lets a modded game earn achievements, see `achievements`.
+    #[serde(default)]
+    pub keep_achievements: bool,
     /// Game folders the user gave by hand, keyed by `game_dir_key`.
     #[serde(default)]
     pub game_dirs: BTreeMap<String, PathBuf>,

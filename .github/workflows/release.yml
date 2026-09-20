@@ -1,93 +1,126 @@
-name: Release
+name: release
+
+# Cuts a desktop release on every `v*` tag, one platform per runner. Every
+# build step is a rustscript under build/release/, this file only wires the
+# runners, the secrets and the upload host together.
+
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('release (manual rerun on {0})', github.ref_name) || format('release {0}', github.ref_name) }}
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 
-permissions:
-  contents: read
-
-concurrency:
-  group: blackforge-release
-  cancel-in-progress: false
-
 env:
   INFISICAL_URL: https://infisical.vladas.xyz
   APP_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
   APPLE_PROJECT_ID: e2dd64d9-130c-4072-bd3d-0a98331364cb
+  HOST_DEPLOYMENT: studio
+  TARGET_SUBDIR: blackforge
 
 jobs:
-  build:
+  discover:
+    runs-on: [self-hosted, tc]
+    outputs:
+      host: ${{ steps.h.outputs.host }}
+      dl-dir: ${{ steps.h.outputs.dl-dir }}
+    steps:
+      - id: h
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE=$(curl -sSf "https://beekeeper.tailf87cbe.ts.net/api/deployments/by-name/$HOST_DEPLOYMENT" \
+            | python3 -c "import sys,json;print(json.load(sys.stdin)['node_hostname'])")
+          HOST="$NODE.tailf87cbe.ts.net"
+          DL_DIR="deployments/$HOST_DEPLOYMENT/data/download/$TARGET_SUBDIR"
+          echo "host=$HOST" >> "$GITHUB_OUTPUT"
+          echo "dl-dir=$DL_DIR" >> "$GITHUB_OUTPUT"
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            vladas@$HOST "bash -c 'mkdir -p $DL_DIR'"
+
+  build-mac:
+    needs: discover
+    runs-on: [self-hosted, mac]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/init
+      - shell: bash
+        run: bash build/release/with-secrets.sh $APPLE_PROJECT_ID $APP_PROJECT_ID -- make release-mac
+      - uses: ./.github/actions/upload
+        with:
+          host: ${{ needs.discover.outputs.host }}
+          dl-dir: ${{ needs.discover.outputs.dl-dir }}
+
+  build-linux:
+    needs: discover
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: mac
-            arch: universal
-            runner: mac
-          - platform: linux
-            arch: x64
-            runner: tc
-          - platform: linux
-            arch: aarch64
-            runner: mac
-          - platform: win
-            arch: x64
-            runner: tc
-          - platform: win
-            arch: arm64
-            runner: tc
-    runs-on: [self-hosted, '${{ matrix.runner }}']
-    timeout-minutes: 90
+        arch: [x64, aarch64]
+    runs-on: ${{ matrix.arch == 'aarch64' && fromJSON('["self-hosted","mac"]') || fromJSON('["self-hosted","tc"]') }}
     steps:
-      - uses: actions/checkout@v7
-      - name: Validate release
+      - if: runner.os == 'Linux'
         shell: bash
         run: |
-          set -euo pipefail
-          test -n "$APP_PROJECT_ID" || { echo 'Set the INFISICAL_PROJECT_ID repository variable'; exit 1; }
-          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
-          test "$GITHUB_REF_NAME" = "v$VERSION" || { echo 'Run this workflow on the matching version tag'; exit 1; }
-      - name: Build GUI package
-        shell: bash
-        env:
-          PLATFORM: ${{ matrix.platform }}
-          ARCH: ${{ matrix.arch }}
-        run: |
-          set -euo pipefail
-          if [ "$PLATFORM" = mac ]; then
-            bash build/release/with-secrets.sh "$APPLE_PROJECT_ID" "$APP_PROJECT_ID" -- cargo run --locked --manifest-path build/Cargo.toml --bin release-mac
-          else
-            bash build/release/with-secrets.sh "$APP_PROJECT_ID" -- cargo run --locked --manifest-path build/Cargo.toml --bin "release-$PLATFORM" -- "--arch=$ARCH"
+          # Files left by docker are owned by root, checkout cannot clean them.
+          if [ -d "${{ runner.workspace }}" ]; then
+            docker run --rm -v "${{ runner.workspace }}":/ws alpine chown -R $(id -u):$(id -g) /ws
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/init
+      - shell: bash
+        run: bash build/release/with-secrets.sh $APP_PROJECT_ID -- rust build/release/linux.rs --arch=${{ matrix.arch }}
+      - uses: ./.github/actions/upload
         with:
-          name: gui-${{ matrix.platform }}-${{ matrix.arch }}
-          path: dist/blackforge-*
-          if-no-files-found: error
+          host: ${{ needs.discover.outputs.host }}
+          dl-dir: ${{ needs.discover.outputs.dl-dir }}
 
-  publish:
-    needs: build
+  build-windows:
+    needs: discover
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
     runs-on: [self-hosted, tc]
-    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v4
+      - shell: bash
+        run: |
+          if [ -d "${{ runner.workspace }}" ]; then
+            docker run --rm -v "${{ runner.workspace }}":/ws alpine chown -R $(id -u):$(id -g) /ws
+          fi
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/init
+      - shell: bash
+        run: bash build/release/with-secrets.sh $APP_PROJECT_ID -- rust build/release/win.rs --arch=${{ matrix.arch }}
+      - uses: ./.github/actions/upload
         with:
-          pattern: gui-*
-          path: dist
-          merge-multiple: true
-      - name: Publish to Studio
-        shell: bash
+          host: ${{ needs.discover.outputs.host }}
+          dl-dir: ${{ needs.discover.outputs.dl-dir }}
+
+  manifest:
+    needs: [discover, build-mac, build-linux, build-windows]
+    if: ${{ !cancelled() }}
+    runs-on: [self-hosted, tc]
+    steps:
+      - shell: bash
+        run: |
+          if [ -d "${{ runner.workspace }}" ]; then
+            docker run --rm -v "${{ runner.workspace }}":/ws alpine chown -R $(id -u):$(id -g) /ws
+          fi
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/init
+      - shell: bash
+        env:
+          HOST: ${{ needs.discover.outputs.host }}
+          DL: ${{ needs.discover.outputs.dl-dir }}
         run: |
           set -euo pipefail
-          cargo run --locked --manifest-path build/Cargo.toml --bin release-manifest -- --complete
-          NODE=$(curl --fail --silent --show-error https://beekeeper.tailf87cbe.ts.net/api/deployments/by-name/studio | jq -er .node_hostname)
-          HOST="vladas@$NODE.tailf87cbe.ts.net"
-          DEST=deployments/studio/data/download/blackforge
-          ssh "$HOST" 'mkdir -p deployments/studio/data/download/blackforge'
-          scp dist/blackforge-* "$HOST:$DEST/"
-          scp dist/manifest.json "$HOST:$DEST/manifest.json.next"
-          scp dist/updater.json "$HOST:$DEST/updater.json.next"
-          ssh "$HOST" 'cd deployments/studio/data/download/blackforge && mv manifest.json.next manifest.json && mv updater.json.next updater.json'
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+          mkdir -p dist
+          ssh $SSH_OPTS vladas@$HOST "ls $DL" > dist/present.txt
+          for meta in $(grep '\.meta\.json$' dist/present.txt); do
+            scp $SSH_OPTS vladas@$HOST:$DL/$meta dist/
+          done
+          rust build/release/manifest.rs --present dist/present.txt
+          scp $SSH_OPTS dist/manifest.json vladas@$HOST:$DL/
+          [ -f dist/updater.json ] && scp $SSH_OPTS dist/updater.json vladas@$HOST:$DL/ || true

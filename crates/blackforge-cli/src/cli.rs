@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
 #[command(name = "blackforge", version, about = "Mod manager for Valheim")]
@@ -83,6 +83,11 @@ pub enum Command {
     },
     /// Check everything that run depends on
     Doctor,
+    /// Let a modded game earn achievements, shows the setting when no word is given
+    Achievements {
+        #[arg(value_enum)]
+        state: Option<OnOff>,
+    },
     /// List the portals of a world save
     Portals {
         /// A world .db file, or the world folder of a newer save
@@ -94,6 +99,12 @@ pub enum Command {
     /// Read and edit the config files of the mods
     #[command(subcommand)]
     Config(ConfigCommand),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum OnOff {
+    On,
+    Off,
 }
 
 #[derive(Debug, Args)]

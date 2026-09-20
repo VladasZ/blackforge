@@ -298,6 +298,17 @@ impl Forge {
         locate(game, state.game_dirs.get(&key).cloned()).await
     }
 
+    /// Whether a modded game may earn achievements, off until the user asks.
+    pub async fn keep_achievements(&self) -> Result<bool> {
+        Ok(self.store.state().await?.keep_achievements)
+    }
+
+    pub async fn set_keep_achievements(&self, keep: bool) -> Result<()> {
+        let mut state = self.store.state().await?;
+        state.keep_achievements = keep;
+        self.store.save_state(&state).await
+    }
+
     async fn relock(
         &self,
         profile: &Profile,

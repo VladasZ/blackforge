@@ -8,6 +8,7 @@ use blackforge_core::{
 
 use crate::{
     Context,
+    cli::OnOff,
     ui::{hint, print_table},
 };
 
@@ -24,6 +25,7 @@ pub async fn run(context: &Context, game_dir: Option<PathBuf>, game_args: &[Stri
         profile_dir: profile.dir(),
         doorstop_major: doorstop_major(profile.dir()).await,
         game_args,
+        keep_achievements: context.forge.keep_achievements().await?,
         inherited: &inherited_env,
     })?;
     println!(
@@ -35,6 +37,21 @@ pub async fn run(context: &Context, game_dir: Option<PathBuf>, game_args: &[Stri
     let status = spawn(&plan, profile.dir()).await?.wait().await?;
     if !status.success() {
         bail!("the game exited with {status}");
+    }
+    Ok(())
+}
+
+pub async fn achievements(context: &Context, state: Option<OnOff>) -> Result<()> {
+    if let Some(state) = state {
+        context
+            .forge
+            .set_keep_achievements(state == OnOff::On)
+            .await?;
+    }
+    if context.forge.keep_achievements().await? {
+        println!("on, mods do not block achievements, real cheats still do");
+    } else {
+        println!("off, a game with mods earns no achievements");
     }
     Ok(())
 }

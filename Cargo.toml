@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/blackforge", "crates/blackforge-cli", "crates/blackforge-core", "web", "build", "build/shared"]
+members = ["crates/blackforge", "crates/blackforge-cli", "crates/blackforge-core", "web"]
 resolver = "3"
 
 [workspace.package]
@@ -10,12 +10,9 @@ version = "0.1.0"
 
 [workspace.dependencies]
 chrono = "0.4"
-ed25519-dalek = "2.2"
-hex = "0.4"
 plat = "0.9"
-sha2 = "0.10"
-shared = { path = "build/shared" }
 web-sys = { version = "0.3", features = ["Location", "Window"] }
+winresource = "0.1"
 blackforge-core = { path = "crates/blackforge-core", version = "0.1.0" }
 
 anyhow = "1.0"
