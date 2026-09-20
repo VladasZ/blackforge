@@ -200,13 +200,15 @@ impl PackageIndex {
     }
 
     /// Every word of `query` must be in the id or the description. A hit in
-    /// the name ranks first, then more downloads.
+    /// the name ranks first, then a live package before a deprecated one, then
+    /// more downloads. Deprecated packages stay in, an author can deprecate a
+    /// mod that still works and that people still want to add.
     pub fn search(&self, query: &str) -> Vec<&Package> {
         let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
         let mut hits: Vec<(bool, &Package)> = self
             .packages
             .iter()
-            .filter(|package| !package.deprecated && !is_mod_manager(&package.id))
+            .filter(|package| !is_mod_manager(&package.id))
             .filter_map(|package| {
                 let id = package.id.to_string().to_lowercase();
                 let description = package.description.to_lowercase();
@@ -216,7 +218,11 @@ impl PackageIndex {
                 all.then(|| (words.iter().all(|word| id.contains(word)), package))
             })
             .collect();
-        hits.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.downloads.cmp(&a.1.downloads)));
+        hits.sort_by(|a, b| {
+            b.0.cmp(&a.0)
+                .then(a.1.deprecated.cmp(&b.1.deprecated))
+                .then(b.1.downloads.cmp(&a.1.downloads))
+        });
         hits.into_iter().map(|(_, package)| package).collect()
     }
 }

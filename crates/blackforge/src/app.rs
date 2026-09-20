@@ -1,8 +1,9 @@
-use std::fs::create_dir_all;
+use std::{env::var, fs::create_dir_all};
 
 use blackforge_core::paths::DataDir;
+use dotenvy::dotenv;
 use hilen::{
-    App, AppRunner, PinnedFuture, Window,
+    App, AppRunner, BugReport, PinnedFuture, Window,
     dispatch::after,
     refs::Own,
     store::OnDisk,
@@ -37,10 +38,38 @@ impl App for BlackforgeApp {
     fn after_launch(&self) {
         AppRunner::set_window_title("Blackforge");
         Window::set_icon(include_bytes!("../../../assets/icon.png"));
+        // The rooster loop of kukareker, shown in the engine's bug report
+        // dialog.
+        BugReport::set_animation(include_bytes!("../../../assets/bug-rooster.gif"));
         after(3.0, || crate::updater::check(|_| {}));
     }
 
     fn update_source(&self) -> PinnedFuture<Option<UpdateSource>> {
         Box::pin(async { Ok(Some(crate::updater::source())) })
+    }
+
+    // Without these the engine logger drops everything of the app below a
+    // warning, and the log a bug report attaches says nothing.
+    fn log_targets(&self) -> &'static [&'static str] {
+        &["blackforge_gui", "blackforge_core"]
+    }
+
+    // Crashes and bug reports go to Sentry through the engine. A release
+    // build embeds the DSN from BLACKFORGE_SENTRY_URL at compile time, the
+    // release workflow puts it in the env from Infisical. A dev build
+    // without it reads the same variable at runtime, from the environment
+    // or a .env next to the binary, and without one reporting stays off.
+    fn sentry_url(&self) -> PinnedFuture<Option<String>> {
+        Box::pin(async {
+            if let Some(url) = option_env!("BLACKFORGE_SENTRY_URL").filter(|url| !url.is_empty()) {
+                return Ok(Some(url.to_owned()));
+            }
+            if let Err(error) = dotenv() {
+                log::debug!("no .env loaded: {error}");
+            }
+            Ok(var("BLACKFORGE_SENTRY_URL")
+                .ok()
+                .filter(|url| !url.is_empty()))
+        })
     }
 }

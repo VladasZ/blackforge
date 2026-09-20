@@ -5,18 +5,27 @@ use std::{cell::Cell, collections::HashMap};
 
 use blackforge_core::{ident::VersionedId, progress::Event};
 use hilen::{
+    BugReport,
     gm::LossyConvert,
     refs::Weak,
     ui::{Button, Container, Label, ProgressView, Setup, ViewData, view},
 };
 
-use crate::ui::{colors, style};
+use crate::ui::{colors, icon_button::IconButton, style};
 use crate::{
     ui::toast,
     updater::{self, Phase},
 };
 
 pub const HEIGHT: f32 = 34.0;
+
+const BUTTON_HEIGHT: f32 = 26.0;
+const GAP: f32 = 8.0;
+/// Fits the longest label, "Install 0.1.10 & restart", at text size 12.
+const UPDATE_WIDTH: f32 = 160.0;
+const PROGRESS_WIDTH: f32 = 200.0;
+const PROGRESS_GAP: f32 = 12.0;
+const TEXT_GAP: f32 = 40.0;
 
 thread_local! {
     static BAR: Cell<Weak<StatusBar>> = const { Cell::new(Weak::const_default()) };
@@ -56,6 +65,7 @@ pub struct StatusBar {
     text: Label,
     progress: ProgressView,
     update: Button,
+    bug: IconButton,
 }
 
 impl Setup for StatusBar {
@@ -65,18 +75,38 @@ impl Setup for StatusBar {
         self.line.set_color(colors::BORDER);
         self.line.place().l(0).r(0).t(0).h(1);
 
+        // From the right edge: the bug button, the update button, the
+        // progress line, then the text takes what is left.
+        let update_right = style::PAGE_PAD + BUTTON_HEIGHT + GAP;
+        let progress_right = update_right + UPDATE_WIDTH + PROGRESS_GAP;
+        let text_right = progress_right + PROGRESS_WIDTH + TEXT_GAP;
+
         style::dim(self.text);
         self.text.set_text("ready");
-        self.text.place().l(style::PAGE_PAD).r(480).t(0).b(0);
+        self.text.place().l(style::PAGE_PAD).r(text_right).t(0).b(0);
 
         self.progress.set_hidden(true);
-        self.progress.place().r(240).center_y().size(200, 6);
+        self.progress
+            .place()
+            .r(progress_right)
+            .center_y()
+            .size(PROGRESS_WIDTH, 6);
 
-        self.update
+        // The button always shows, like in kukareker. The engine opens the
+        // dialog only with a Sentry DSN, without one a tap only logs a warning.
+        self.bug.set_icon("bug.svg");
+        self.bug
             .place()
             .r(style::PAGE_PAD)
             .center_y()
-            .size(210, 26);
+            .size(BUTTON_HEIGHT, BUTTON_HEIGHT);
+        self.bug.tapped.sub(BugReport::open);
+
+        self.update
+            .place()
+            .r(update_right)
+            .center_y()
+            .size(UPDATE_WIDTH, BUTTON_HEIGHT);
         style::ghost(self.update, "Check for updates");
         self.update.set_text_size(12);
         self.refresh_update();

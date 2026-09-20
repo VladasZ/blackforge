@@ -34,6 +34,12 @@ impl Setup for Pill {
 }
 
 impl Pill {
+    /// The red look, for a fact the user must not miss.
+    pub fn warn(self: Weak<Self>) {
+        self.set_color(colors::BAD_BG);
+        self.label.set_text_color(colors::BAD);
+    }
+
     /// Sets the content and returns the width the pill needs. The text
     /// decides the width, so the owner places the pill after every call.
     pub fn set(self: Weak<Self>, icon: &str, text: &str) -> f32 {

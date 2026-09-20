@@ -17,6 +17,7 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 blackforge-core = { workspace = true }
+dotenvy = { workspace = true }
 hilen = { workspace = true }
 image = { workspace = true }
 log = { workspace = true }

@@ -1,0 +1,22 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="#e8590c"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M9 7 L 7 4" />
+  <path d="M15 7 L 17 4" />
+  <rect x="7" y="7" width="10" height="13" rx="5" />
+  <path d="M12 10 v 8" />
+  <path d="M7 11 L 3 8" />
+  <path d="M7 14 L 3 14" />
+  <path d="M7 17 L 3 20" />
+  <path d="M17 11 L 21 8" />
+  <path d="M17 14 L 21 14" />
+  <path d="M17 17 L 21 20" />
+</svg>

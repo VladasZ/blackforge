@@ -161,11 +161,16 @@ pub async fn search(context: &Context, query: &str, limit: usize) -> Result<()> 
             .latest()
             .map(|latest| latest.version.to_string())
             .unwrap_or_default();
+        let description = shorten(&package.description, 70);
         rows.push(vec![
             package.id.to_string(),
             version,
             package.downloads.to_string(),
-            shorten(&package.description, 70),
+            if package.deprecated {
+                format!("deprecated, {description}")
+            } else {
+                description
+            },
         ]);
     }
     print_table(&rows);

@@ -35,8 +35,6 @@ const PAGE_RIGHT: f32 = 16.0 + ADD_WIDTH + 8.0;
 /// The pills end where the page button starts, with a gap.
 const PILLS_RIGHT: f32 = PAGE_RIGHT + icon_button::SIZE + 16.0;
 const PILL_GAP: f32 = 8.0;
-/// The name ends where the pills start, 2 pills fit in this room.
-const NAME_RIGHT: f32 = PILLS_RIGHT + 214.0;
 /// Where the first line of a row starts: the name, the pills and the button.
 const TOP_LINE: f32 = 12.0;
 const ICON: f32 = 40.0;
@@ -48,7 +46,8 @@ const SHOWN: usize = 200;
 /// The order of the found packages.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Sort {
-    /// A hit in the name first, then more downloads. The order of the core.
+    /// A hit in the name first, then live before deprecated, then more
+    /// downloads. The order of the core.
     #[default]
     BestMatch,
     /// Most downloads first, wherever the words were found.
@@ -73,6 +72,7 @@ struct Hit {
     description: String,
     page_url: String,
     installed: bool,
+    deprecated: bool,
 }
 
 struct Found {
@@ -188,6 +188,7 @@ impl BrowsePage {
                                 .collect::<Vec<_>>()
                                 .join(" "),
                             page_url: package.package_url.clone(),
+                            deprecated: package.deprecated,
                         }
                     })
                     .collect();
@@ -301,6 +302,7 @@ struct HitCell {
     description: Label,
     version: Pill,
     downloads: Pill,
+    deprecated: Pill,
     installed: Label,
     open_page: IconButton,
     add: Button,
@@ -313,12 +315,8 @@ impl Setup for HitCell {
 
         style::body(self.name);
         self.name.set_ellipsize(true);
-        self.name
-            .place()
-            .t(TOP_LINE + 2.0)
-            .l(TEXT_LEFT)
-            .r(NAME_RIGHT)
-            .h(20);
+
+        self.deprecated.warn();
 
         // The whole row width and 2 lines. Thunderstore caps a description at
         // 250 characters, so at a normal window size nothing is cut. A click
@@ -334,15 +332,17 @@ impl Setup for HitCell {
             .r(16)
             .h(36);
 
-        style::dim(self.installed);
+        // Same rectangle as the add button, so the column reads as one shape.
         self.installed.set_text("installed");
-        self.installed.set_text_color(colors::OK);
+        self.installed.set_text_size(13).set_text_color(colors::OK);
         self.installed.set_alignment(TextAlignment::Center);
+        self.installed.set_color(colors::OK_BG);
+        self.installed.set_corner_radius(7);
         self.installed
             .place()
             .r(16)
-            .t(TOP_LINE + 4.0)
-            .size(ADD_WIDTH, 16);
+            .t(TOP_LINE - 2.0)
+            .size(ADD_WIDTH, 28);
 
         self.open_page.set_icon("open_page.svg");
         self.open_page
@@ -388,20 +388,42 @@ impl HitCell {
         self.description.set_text(&hit.description);
 
         // The pills sit right to left, each as wide as its text.
+        let mut right = PILLS_RIGHT;
         let downloads = self.downloads.set("pill_downloads.svg", &hit.downloads);
         self.downloads
             .place()
             .clear()
-            .r(PILLS_RIGHT)
+            .r(right)
             .t(TOP_LINE)
             .size(downloads, pill::HEIGHT);
+        right += downloads + PILL_GAP;
         let version = self.version.set("pill_version.svg", &hit.version);
         self.version
             .place()
             .clear()
-            .r(PILLS_RIGHT + downloads + PILL_GAP)
+            .r(right)
             .t(TOP_LINE)
             .size(version, pill::HEIGHT);
+        right += version + PILL_GAP;
+        self.deprecated.set_hidden(!hit.deprecated);
+        if hit.deprecated {
+            let deprecated = self.deprecated.set("pill_deprecated.svg", "deprecated");
+            self.deprecated
+                .place()
+                .clear()
+                .r(right)
+                .t(TOP_LINE)
+                .size(deprecated, pill::HEIGHT);
+            right += deprecated + PILL_GAP;
+        }
+        // The name ends where the pills start, a row has 2 or 3 of them.
+        self.name
+            .place()
+            .clear()
+            .t(TOP_LINE + 2.0)
+            .l(TEXT_LEFT)
+            .r(right + PILL_GAP)
+            .h(20);
         self.installed.set_hidden(!hit.installed);
         self.add.set_hidden(hit.installed);
     }

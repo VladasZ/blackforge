@@ -1,7 +1,12 @@
 include build/common.mk
 
+# Build and run the release binary. It uses the Sentry DSN from Infisical when
+# it is logged in, and falls back to a plain build otherwise. The logic is in
+# the shared run.sh.
+INFISICAL_PROJECT := a2066daf-13f4-4831-9d06-8ee963560c03
+
 run:
-	cargo run --release
+	INFISICAL_PROJECT=$(INFISICAL_PROJECT) PATH="$$HOME/.cargo/bin:$$PATH" sh build/run.sh
 
 check:
 	typos
