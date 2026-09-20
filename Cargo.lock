@@ -436,7 +436,7 @@ dependencies = [
 
 [[package]]
 name = "blackforge"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "blackforge-core",
@@ -449,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "blackforge-cli"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "blackforge-core",
@@ -460,7 +460,7 @@ dependencies = [
 
 [[package]]
 name = "blackforge-core"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "base64 0.23.1",
  "dirs 7.0.0",
