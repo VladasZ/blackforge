@@ -2,9 +2,11 @@ use std::fs::create_dir_all;
 
 use blackforge_core::paths::DataDir;
 use hilen::{
-    App, AppRunner,
+    App, AppRunner, PinnedFuture,
+    dispatch::after,
     refs::Own,
     store::OnDisk,
+    system::UpdateSource,
     ui::{Setup, Size, View},
 };
 
@@ -15,6 +17,7 @@ pub struct BlackforgeApp;
 
 impl App for BlackforgeApp {
     fn make_root_view(&self) -> Own<dyn View> {
+        crate::assets::load();
         Shell::new()
     }
 
@@ -33,5 +36,10 @@ impl App for BlackforgeApp {
 
     fn after_launch(&self) {
         AppRunner::set_window_title("Blackforge");
+        after(3.0, || crate::updater::check(|_| {}));
+    }
+
+    fn update_source(&self) -> PinnedFuture<Option<UpdateSource>> {
+        Box::pin(async { Ok(Some(crate::updater::source())) })
     }
 }

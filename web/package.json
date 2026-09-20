@@ -1,0 +1,12 @@
+{
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  },
+  "name": "blackforge-web",
+  "private": true,
+  "scripts": {
+    "build": "bun build downloads.ts --target=browser --minify --outfile=generated/downloads.js",
+    "check": "tsc --noEmit"
+  }
+}

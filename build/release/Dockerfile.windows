@@ -1,0 +1,32 @@
+# The Windows cross build box, clang plus cargo-xwin against the MSVC SDK
+# and NSIS for the installer. The repo is mounted at run time, see win.rs.
+FROM rust:1.94.1-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates git nsis cmake llvm clang lld \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN cargo install --locked cargo-xwin
+
+ENV XWIN_ACCEPT_LICENSE=1
+ENV CC_x86_64_pc_windows_msvc=clang-cl
+ENV CXX_x86_64_pc_windows_msvc=clang-cl
+ENV AR_x86_64_pc_windows_msvc=llvm-lib
+ENV CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=lld-link
+ENV CC_aarch64_pc_windows_msvc=clang-cl
+ENV CXX_aarch64_pc_windows_msvc=clang-cl
+ENV AR_aarch64_pc_windows_msvc=llvm-lib
+ENV CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER=lld-link
+
+# cc-rs runs gcc mode clang for .S files even on MSVC targets, and the
+# `/imsvc PATH` pairs cargo-xwin puts in CFLAGS break it. The wrapper
+# rewrites them to `-I PATH`.
+COPY clang-xwin-wrapper.sh /usr/local/bin/clang
+RUN chmod +x /usr/local/bin/clang
+
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+RUN git config --global url."https://github.com/".insteadOf "git@github.com:" \
+ && git config --global http.version HTTP/1.1
+
+WORKDIR /work/apps/app

@@ -7,10 +7,14 @@ use blackforge_core::{ident::VersionedId, progress::Event};
 use hilen::{
     gm::LossyConvert,
     refs::Weak,
-    ui::{Container, Label, ProgressView, Setup, ViewData, view},
+    ui::{Button, Container, Label, ProgressView, Setup, ViewData, view},
 };
 
 use crate::ui::{colors, style};
+use crate::{
+    ui::toast,
+    updater::{self, Phase},
+};
 
 pub const HEIGHT: f32 = 34.0;
 
@@ -51,6 +55,7 @@ pub struct StatusBar {
     line: Container,
     text: Label,
     progress: ProgressView,
+    update: Button,
 }
 
 impl Setup for StatusBar {
@@ -62,20 +67,57 @@ impl Setup for StatusBar {
 
         style::dim(self.text);
         self.text.set_text("ready");
-        self.text.place().l(style::PAGE_PAD).r(260).t(0).b(0);
+        self.text.place().l(style::PAGE_PAD).r(480).t(0).b(0);
 
         self.progress.set_hidden(true);
-        self.progress
+        self.progress.place().r(240).center_y().size(200, 6);
+
+        self.update
             .place()
             .r(style::PAGE_PAD)
             .center_y()
-            .size(200, 6);
+            .size(210, 26);
+        style::ghost(self.update, "Check for updates");
+        self.update.set_text_size(12);
+        self.refresh_update();
+        updater::state().changed.sub(move || self.refresh_update());
+        self.update.on_tap(|| {
+            let state = updater::state();
+            if state.busy() {
+                return;
+            }
+            if state.has_update() {
+                updater::install(toast::error);
+            } else {
+                updater::check(|state| {
+                    if let Some(error) = &state.error {
+                        toast::error(error);
+                    } else if !state.has_update() {
+                        toast::info("Blackforge is up to date");
+                    }
+                });
+            }
+        });
 
         BAR.with(|slot| slot.set(self));
     }
 }
 
 impl StatusBar {
+    fn refresh_update(self: Weak<Self>) {
+        let state = updater::state();
+        let label = match state.phase {
+            Phase::Idle => "Check for updates".to_owned(),
+            Phase::Checking => "Checking for updates…".to_owned(),
+            Phase::Available => format!(
+                "Install {} & restart",
+                state.version.as_deref().unwrap_or_default()
+            ),
+            Phase::Installing => format!("Installing {}%", state.progress),
+        };
+        self.update.set_text(label);
+    }
+
     fn begin(mut self: Weak<Self>, title: &str) -> u64 {
         self.next_id += 1;
         let id = self.next_id;

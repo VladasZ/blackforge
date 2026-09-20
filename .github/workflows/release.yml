@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blackforge-release
+  cancel-in-progress: false
+
+env:
+  INFISICAL_URL: https://infisical.vladas.xyz
+  APP_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
+  APPLE_PROJECT_ID: e2dd64d9-130c-4072-bd3d-0a98331364cb
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: mac
+            arch: universal
+            runner: mac
+          - platform: linux
+            arch: x64
+            runner: tc
+          - platform: linux
+            arch: aarch64
+            runner: mac
+          - platform: win
+            arch: x64
+            runner: tc
+          - platform: win
+            arch: arm64
+            runner: tc
+    runs-on: [self-hosted, '${{ matrix.runner }}']
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$APP_PROJECT_ID" || { echo 'Set the INFISICAL_PROJECT_ID repository variable'; exit 1; }
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
+          test "$GITHUB_REF_NAME" = "v$VERSION" || { echo 'Run this workflow on the matching version tag'; exit 1; }
+      - name: Build GUI package
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          if [ "$PLATFORM" = mac ]; then
+            bash build/release/with-secrets.sh "$APPLE_PROJECT_ID" "$APP_PROJECT_ID" -- cargo run --locked --manifest-path build/Cargo.toml --bin release-mac
+          else
+            bash build/release/with-secrets.sh "$APP_PROJECT_ID" -- cargo run --locked --manifest-path build/Cargo.toml --bin "release-$PLATFORM" -- "--arch=$ARCH"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/blackforge-*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: [self-hosted, tc]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: gui-*
+          path: dist
+          merge-multiple: true
+      - name: Publish to Studio
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --locked --manifest-path build/Cargo.toml --bin release-manifest -- --complete
+          NODE=$(curl --fail --silent --show-error https://beekeeper.tailf87cbe.ts.net/api/deployments/by-name/studio | jq -er .node_hostname)
+          HOST="vladas@$NODE.tailf87cbe.ts.net"
+          DEST=deployments/studio/data/download/blackforge
+          ssh "$HOST" 'mkdir -p deployments/studio/data/download/blackforge'
+          scp dist/blackforge-* "$HOST:$DEST/"
+          scp dist/manifest.json "$HOST:$DEST/manifest.json.next"
+          scp dist/updater.json "$HOST:$DEST/updater.json.next"
+          ssh "$HOST" 'cd deployments/studio/data/download/blackforge && mv manifest.json.next manifest.json && mv updater.json.next updater.json'

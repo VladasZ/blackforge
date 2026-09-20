@@ -21,3 +21,12 @@ hilen = { workspace = true }
 image = { workspace = true }
 log = { workspace = true }
 tokio = { workspace = true }
+
+[package.metadata.deb]
+name = "blackforge-gui"
+maintainer = "Vladas Zakrevskis"
+assets = [
+    ["target/release/blackforge-gui", "usr/bin/blackforge-gui", "755"],
+    ["../../target/linux-stage/blackforge.desktop", "usr/share/applications/blackforge.desktop", "644"],
+    ["../../target/linux-stage/blackforge.svg", "usr/share/icons/hicolor/scalable/apps/blackforge.svg", "644"],
+]

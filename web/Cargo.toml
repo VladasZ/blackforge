@@ -1,0 +1,22 @@
+[package]
+name = "blackforge-web"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+log.workspace = true
+serde.workspace = true
+hilen.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+hilen = { workspace = true, features = ["inspect"] }
+
+[build-dependencies]
+plat.workspace = true
+
+[features]
+webgl = ["hilen/webgl"]

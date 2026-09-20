@@ -1,0 +1,33 @@
+[package]
+name = "blackforge-release"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+shared.workspace = true
+
+[[bin]]
+name = "release-mac"
+path = "release/mac.rs"
+
+[[bin]]
+name = "release-linux"
+path = "release/linux.rs"
+
+[[bin]]
+name = "release-win"
+path = "release/win.rs"
+
+[[bin]]
+name = "release-sign"
+path = "release/sign.rs"
+
+[[bin]]
+name = "release-manifest"
+path = "release/manifest.rs"

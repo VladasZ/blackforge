@@ -12,6 +12,21 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  website:
+    name: Website
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile && bun run check && bun run build
+        working-directory: web
+      - run: rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --locked -p blackforge-web --target wasm32-unknown-unknown --features webgl
+
   fmt:
     name: Format
     runs-on: ubuntu-latest

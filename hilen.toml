@@ -1,0 +1,7 @@
+project_name = "blackforge"
+bundle_id = "xyz.vladas.blackforge"
+
+[release]
+download_url = "https://gebling-studio.vladas.xyz/blackforge/download"
+host_deployment = "studio"
+target_subdir = "blackforge"

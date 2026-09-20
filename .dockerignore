@@ -1,0 +1,6 @@
+**/target/
+**/dist/
+**/generated/
+**/node_modules/
+.git/
+.zed/

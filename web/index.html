@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <!-- Trunk fills the public url in, so asset fetches resolve against
+             the mount point and not only the site root. -->
+        <base data-trunk-public-url />
+        <link data-trunk rel="copy-file" href="generated/downloads.js" />
+        <link data-trunk rel="copy-file" href="fonts/Cinzel.ttf" />
+        <link data-trunk rel="rust" data-bin="blackforge-web" />
+        <title>blackforge</title>
+        <meta
+            name="description"
+            content="A Valheim mod manager for macOS, Windows and Linux. Install Thunderstore mods, manage profiles and edit mod settings."
+        />
+        <style type="text/css">
+            @font-face {
+                font-family: Cinzel;
+                src: url("Cinzel.ttf");
+                font-weight: 400 900;
+                font-display: swap;
+            }
+            body {
+                margin: 0;
+                background: #141210;
+            }
+            canvas {
+                display: block;
+                width: 100vw;
+                height: 100vh;
+            }
+            canvas:focus {
+                outline: none;
+            }
+            /* Shown until the app boots, and forever in a browser that cannot
+               run it. A crawler reads this, a canvas gives it nothing. */
+            #fallback {
+                position: fixed;
+                inset: 0;
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                justify-content: center;
+                gap: 1rem;
+                padding: clamp(1.5rem, 6vw, 6rem);
+                text-align: left;
+                color: #e6d6b5;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+            }
+            #fallback h1 {
+                font-family: Cinzel, Georgia, serif;
+                color: #d2a75e;
+                margin: 0;
+                font-size: 3rem;
+                font-weight: 700;
+                letter-spacing: -0.03em;
+            }
+            #fallback p {
+                margin: 0;
+                max-width: 32rem;
+                line-height: 1.5;
+                color: #b6a68b;
+            }
+            #fallback a {
+                color: #d2a75e;
+            }
+            #fallback a:hover {
+                color: #ffffff;
+                text-decoration-thickness: 3px;
+            }
+            /* The engine appends its canvas to the body once the module
+               boots, so its presence is the signal that the real page took
+               over. A sibling selector cannot see it, the canvas lands after
+               this element. */
+            body:has(canvas) #fallback {
+                display: none;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="fallback">
+            <h1>blackforge</h1>
+            <p>A Valheim mod manager.</p>
+            <p>
+                Browse and install mods, manage profiles and launch Valheim. Native builds for macOS, Windows and Linux.
+            </p>
+            <p id="downloads">No release available yet.</p>
+            <script src="downloads.js"></script>
+        </div>
+    </body>
+</html>

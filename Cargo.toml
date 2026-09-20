@@ -1,14 +1,21 @@
 [workspace]
-members = ["crates/blackforge", "crates/blackforge-cli", "crates/blackforge-core"]
+members = ["crates/blackforge", "crates/blackforge-cli", "crates/blackforge-core", "web", "build", "build/shared"]
 resolver = "3"
 
 [workspace.package]
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/VladasZ/blackforge"
+repository = "https://github.com/hilen/blackforge"
 version = "0.1.0"
 
 [workspace.dependencies]
+chrono = "0.4"
+ed25519-dalek = "2.2"
+hex = "0.4"
+plat = "0.9"
+sha2 = "0.10"
+shared = { path = "build/shared" }
+web-sys = { version = "0.3", features = ["Location", "Window"] }
 blackforge-core = { path = "crates/blackforge-core", version = "0.1.0" }
 
 anyhow = "1.0"

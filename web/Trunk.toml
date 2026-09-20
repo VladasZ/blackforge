@@ -1,0 +1,12 @@
+[[hooks]]
+stage = "pre_build"
+command = "bun"
+command_arguments = ["run", "build"]
+
+[[proxy]]
+backend = "https://gebling-studio.vladas.xyz/blackforge/download/"
+rewrite = "/download/"
+
+[[proxy]]
+backend = "https://gebling-studio.vladas.xyz/api/downloads/track"
+rewrite = "/api/downloads/track"
