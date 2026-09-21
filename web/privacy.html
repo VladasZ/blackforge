@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="icon" href="favicon.png" />
+        <title>blackforge privacy policy</title>
+        <meta name="description" content="What blackforge stores about you, who can see it and how to delete it." />
+        <style type="text/css">
+            @font-face {
+                font-family: Cinzel;
+                src: url("Cinzel.ttf");
+                font-weight: 400 900;
+                font-display: swap;
+            }
+            /* The two palettes of the landing page. */
+            :root {
+                color-scheme: light dark;
+                --bg: #e6d8b8;
+                --ink: #2c1d0f;
+                --ink-dim: #4a3519;
+                --title: #4a2c10;
+            }
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --bg: #17130f;
+                    --ink: #e6d6b5;
+                    --ink-dim: #c4b492;
+                    --title: #d2a75e;
+                }
+            }
+            body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--ink);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+                line-height: 1.6;
+            }
+            main {
+                max-width: 44rem;
+                margin: 0 auto;
+                padding: clamp(1.5rem, 6vw, 5rem) 1.5rem;
+            }
+            h1,
+            h2 {
+                font-family: Cinzel, Georgia, serif;
+                color: var(--title);
+                letter-spacing: -0.02em;
+            }
+            h1 {
+                font-size: 2.4rem;
+                margin: 0 0 0.25rem;
+            }
+            h2 {
+                font-size: 1.3rem;
+                margin: 2.2rem 0 0.4rem;
+            }
+            p,
+            li {
+                color: var(--ink-dim);
+            }
+            .updated {
+                margin: 0 0 2rem;
+            }
+            a {
+                color: var(--title);
+            }
+            a:hover {
+                color: var(--ink);
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <h1>Privacy policy</h1>
+            <p class="updated">Last updated on 21 September 2026. <a href="./">Back to blackforge</a></p>
+
+            <p>
+                blackforge is a mod manager for Valheim. It works without an account. This page says what is stored
+                when you do sign in, and what the app sends in any case.
+            </p>
+
+            <h2>Without an account</h2>
+            <ul>
+                <li>The app asks Thunderstore for the list of mods and downloads mods from there.</li>
+                <li>The app asks our site if a newer version of blackforge exists.</li>
+                <li>
+                    When the app crashes, it sends a crash report to Sentry. The report holds the error, the app
+                    version, details about your system and your IP address.
+                </li>
+                <li>
+                    When you send a bug report yourself, it holds the email you type in, your description, a
+                    screenshot of the app window and recent log lines. Key presses are included only when you
+                    turn that switch on. Typed text is never recorded.
+                </li>
+                <li>This site counts clicks on the download buttons.</li>
+            </ul>
+
+            <h2>When you sign in with Google</h2>
+            <p>
+                Signing in is optional. It turns on the friends features. We ask Google only for your basic
+                profile. We never see your Google password, your contacts or your mail.
+            </p>
+            <p>We store:</p>
+            <ul>
+                <li>your Google account id, your email, your name and the link to your profile picture,</li>
+                <li>the username you pick,</li>
+                <li>your friends and your open friend requests,</li>
+                <li>the list of mods in your profile, with their versions,</li>
+                <li>
+                    the mod settings that you changed from their defaults. A setting that looks like a secret,
+                    such as a password, a token or a web address, never leaves your computer,
+                </li>
+                <li>the time the app last reported that your game is running.</li>
+            </ul>
+            <p>
+                On your computer the app keeps one login token in an encrypted file. On the server the token is
+                stored only as a hash. A login ends by itself after 90 days without use.
+            </p>
+
+            <h2>Who can see it</h2>
+            <p>
+                Only the friends you accepted. They see your username, your mods, your shared mod settings and if
+                you are in game. They do not see your email. Nobody else sees anything, and nothing is public.
+            </p>
+            <p>We do not sell your data, we show no ads and we do not use your data for anything but these features.</p>
+
+            <h2>Where it is kept</h2>
+            <p>
+                Account data is kept on a server we run ourselves. The site is served through Cloudflare. Crash
+                and bug reports are kept at Sentry. Signing in goes through Google.
+            </p>
+
+            <h2>How to delete it</h2>
+            <p>
+                Signing out in the app ends your login. To delete your account and everything stored with it,
+                write to <a href="mailto:vladaszakrevskis@gmail.com">vladaszakrevskis@gmail.com</a> from the
+                email of your account. We delete it within 30 days. You can also remove the access of blackforge
+                in your Google account at any time.
+            </p>
+
+            <h2>Changes</h2>
+            <p>When this policy changes, the new text is put on this page with a new date.</p>
+        </main>
+    </body>
+</html>
