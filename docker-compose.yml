@@ -2,17 +2,45 @@ name: blackforge
 
 x-beekeeper:
   public_host: blackforge.vladas.xyz
+  infisical:
+    project: Blackforge
+    environment: prod
 
 services:
-  ui:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: blackforge
+      POSTGRES_USER: blackforge
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    user: "1000:1000"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blackforge"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  server:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    image: registry.tailf87cbe.ts.net/blackforge-ui:${VERSION}
+    image: registry.tailf87cbe.ts.net/blackforge-server:${VERSION}
+    environment:
+      PORT: 3000
+      PUBLIC_ORIGIN: https://blackforge.vladas.xyz
+      DATABASE_URL: postgres://blackforge:${DB_PASSWORD}@db:5432/blackforge
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      RUST_LOG: info
     ports:
-      - "8087:80"
+      - "8087:3000"
+    depends_on:
+      db: { condition: service_healthy }
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1/"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/3000"]
       interval: 10s
       timeout: 3s
       retries: 5

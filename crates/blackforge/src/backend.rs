@@ -23,7 +23,10 @@ use blackforge_core::{
 use hilen::dispatch::{on_main, spawn};
 use tokio::sync::Mutex;
 
-use crate::ui::{status, toast};
+use crate::{
+    social,
+    ui::{status, toast},
+};
 
 static FORGE: OnceLock<Forge> = OnceLock::new();
 
@@ -121,6 +124,11 @@ pub fn change<T, Fut>(
     }
     start(title, work, move |result| {
         CHANGING.store(false, Ordering::SeqCst);
+        // Friends see the mods and the changed settings, so every change of
+        // the profile is a reason to send them again.
+        if result.is_ok() {
+            social::share_profile();
+        }
         done(result);
     });
 }

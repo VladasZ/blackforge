@@ -2,6 +2,7 @@
 //! page and the toasts over everything.
 
 use hilen::{
+    dispatch::after,
     refs::Weak,
     ui::{Container, Setup, UIEvents, UIManager, View, ViewData, ViewSubviews, view},
 };
@@ -11,6 +12,8 @@ use crate::ui::{
     colors,
     configs_page::ConfigsPage,
     doctor_page::DoctorPage,
+    friend_mods_page::FriendModsPage,
+    friends_page::FriendsPage,
     mods_page::ModsPage,
     page::Page,
     share_page::SharePage,
@@ -73,10 +76,33 @@ impl Shell {
             Page::Mods => self.content.add_view::<ModsPage>(),
             Page::Browse => self.content.add_view::<BrowsePage>(),
             Page::Configs => self.content.add_view::<ConfigsPage>(),
+            Page::Friends => self.friends_page(),
             Page::Share => self.content.add_view::<SharePage>(),
             Page::Doctor => self.content.add_view::<DoctorPage>(),
         };
         view.place().back();
         self.page = Some(view);
+    }
+
+    /// A tap inside a page asks for the swap, and the swap frees that page
+    /// while its handler still runs, so both ways wait one frame.
+    fn friends_page(self: Weak<Self>) -> Weak<dyn View> {
+        let page = self.content.add_view::<FriendsPage>();
+        page.open_friend
+            .val(move |friend| after(0.0, move || self.show_friend(friend)));
+        page
+    }
+
+    fn show_friend(mut self: Weak<Self>, friend: String) {
+        if let Some(mut old) = self.page.take() {
+            old.remove_from_superview();
+        }
+
+        let page = self.content.add_view::<FriendModsPage>();
+        page.back
+            .sub(move || after(0.0, move || self.show(Page::Friends)));
+        page.set_friend(friend);
+        page.place().back();
+        self.page = Some(page);
     }
 }

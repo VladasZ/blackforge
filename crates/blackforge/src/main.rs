@@ -8,6 +8,7 @@ mod assets;
 mod backend;
 mod icons;
 mod launcher;
+mod social;
 mod ui;
 mod updater;
 

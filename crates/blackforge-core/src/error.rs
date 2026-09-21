@@ -59,6 +59,11 @@ pub enum Error {
     LoaderMissing,
     #[error("the progress receiver was dropped, the operation was cancelled")]
     Cancelled,
+    #[error("not signed in, or the session ended. Sign in again")]
+    NotSignedIn,
+    /// The blackforge server said no, in words meant for the user.
+    #[error("{0}")]
+    Server(String),
     #[error("not supported: {0}")]
     Unsupported(String),
     #[error("{0}")]

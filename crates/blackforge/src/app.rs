@@ -41,7 +41,13 @@ impl App for BlackforgeApp {
         // The rooster loop of kukareker, shown in the engine's bug report
         // dialog.
         BugReport::set_animation(include_bytes!("../../../assets/bug-rooster.gif"));
-        after(3.0, || crate::updater::check(|_| {}));
+        crate::social::init();
+        after(3.0, || {
+            crate::updater::check(|_| {});
+            // Mods and configs can change while the app is closed, from the
+            // command line or a text editor.
+            crate::social::share_profile();
+        });
     }
 
     fn update_source(&self) -> PinnedFuture<Option<UpdateSource>> {

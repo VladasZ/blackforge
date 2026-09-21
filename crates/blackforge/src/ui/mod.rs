@@ -1,7 +1,10 @@
 mod browse_page;
 mod colors;
+mod config_picker;
 mod configs_page;
 mod doctor_page;
+mod friend_mods_page;
+mod friends_page;
 mod game_panel;
 mod hint;
 mod icon_button;

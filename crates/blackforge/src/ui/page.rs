@@ -4,15 +4,17 @@ pub enum Page {
     Mods,
     Browse,
     Configs,
+    Friends,
     Share,
     Doctor,
 }
 
 impl Page {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Mods,
         Self::Browse,
         Self::Configs,
+        Self::Friends,
         Self::Share,
         Self::Doctor,
     ];
@@ -24,6 +26,7 @@ impl Page {
             Self::Mods => "nav_mods.svg",
             Self::Browse => "nav_browse.svg",
             Self::Configs => "nav_configs.svg",
+            Self::Friends => "nav_friends.svg",
             Self::Share => "nav_share.svg",
             Self::Doctor => "nav_doctor.svg",
         }
@@ -34,6 +37,7 @@ impl Page {
             Self::Mods => "Mods",
             Self::Browse => "Browse",
             Self::Configs => "Configs",
+            Self::Friends => "Friends",
             Self::Share => "Share",
             Self::Doctor => "Doctor",
         }

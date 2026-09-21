@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1.7
 
-# Builds the landing page from the workspace and serves the static output.
+# Builds the landing page, then the server with that page embedded in it.
 
 FROM oven/bun:1.4.2 AS bun
 
-FROM rust:trixie AS wasm
+FROM rust:trixie AS builder
 
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 
@@ -47,10 +47,25 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=blackf
     --mount=type=cache,target=/build/target,sharing=locked,id=blackforge-web-cargo-target \
     trunk build --release --features webgl --public-url /
 
-FROM nginx:alpine
+# The server embeds web/dist at compile time, so it builds after the page. A
+# build with no page in it would serve an empty site, so that stops here.
+WORKDIR /build
+RUN test -f web/dist/index.html
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=blackforge-web-cargo-registry \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=blackforge-web-cargo-git \
+    --mount=type=cache,target=/build/target,sharing=locked,id=blackforge-web-cargo-target \
+    cargo build --release --locked -p blackforge-server \
+ && cp /build/target/release/blackforge-server /tmp/blackforge-server
 
-COPY --from=wasm /build/web/dist /usr/share/nginx/html
-COPY backend/nginx.conf /etc/nginx/conf.d/default.conf
+FROM debian:trixie-slim
 
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+# The server calls Google and studio over TLS and checks them against the
+# system roots.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /tmp/blackforge-server /usr/local/bin/blackforge-server
+
+EXPOSE 3000
+CMD ["blackforge-server"]

@@ -23,6 +23,7 @@ pub mod profile;
 pub mod progress;
 pub mod r2;
 pub mod resolve;
+pub mod social;
 #[cfg(test)]
 mod testing;
 pub mod thunderstore;

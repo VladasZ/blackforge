@@ -20,7 +20,7 @@ use hilen::{
 };
 use tokio::process::Child;
 
-use crate::{backend, ui::toast};
+use crate::{backend, social, ui::toast};
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -94,6 +94,7 @@ fn start(game_dir: Option<PathBuf>) {
         |result| match result {
             Ok(Started::Running { child, label }) => {
                 toast::success(format!("started {label}"));
+                social::game_started();
                 wait_for_exit(*child);
             }
             Ok(Started::NotFound { game }) => {
@@ -113,6 +114,7 @@ fn wait_for_exit(mut child: Child) {
         let status = child.wait().await;
         on_main(move || {
             RUNNING.store(false, Ordering::SeqCst);
+            social::game_exited();
             match status {
                 Ok(status) if status.success() => log::info!("the game exited with {status}"),
                 Ok(status) => toast::error(format!("the game exited with {status}")),

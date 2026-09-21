@@ -1,6 +1,6 @@
 [workspace]
 default-members = ["crates/blackforge"]
-members = ["crates/blackforge", "crates/blackforge-cli", "crates/blackforge-core", "web"]
+members = ["backend/server", "crates/blackforge", "crates/blackforge-api", "crates/blackforge-cli", "crates/blackforge-core", "web"]
 resolver = "3"
 
 [workspace.package]
@@ -14,6 +14,7 @@ chrono = "0.4"
 plat = "0.9"
 web-sys = { version = "0.3", features = ["Location", "Window"] }
 winresource = "0.1"
+blackforge-api = { path = "crates/blackforge-api", version = "0.1.0" }
 blackforge-core = { path = "crates/blackforge-core", version = "0.1.0" }
 
 anyhow = "1.0"
@@ -23,7 +24,8 @@ dirs = "7.0"
 dotenvy = "0.15"
 flate2 = "1.1"
 futures-util = "0.3"
-hilen = { git = "https://github.com/hilen/hilen", rev = "b66d86aee03ae7ea51882ad28693286e299e150f" }
+hilen = { git = "https://github.com/hilen/hilen", rev = "3929c543f385b000013823d0f604e58caf1be5d6" }
+hilen-server = { git = "https://github.com/hilen/hilen", rev = "3929c543f385b000013823d0f604e58caf1be5d6" }
 image = { version = "0.25", default-features = false, features = ["png"] }
 indicatif = "0.18"
 log = "0.4"
@@ -33,10 +35,21 @@ reqwest = { version = "0.13", default-features = false, features = [
     "rustls",
     "stream",
 ] }
+rust-embed = "8.12"
 semver = { version = "1.0", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml_ng = "0.10"
+# The same version and features as `hilen-server`, its `migrate!` macro expands
+# to `::sqlx` paths and needs the crate by that name here.
+sqlx = { version = "0.9", default-features = false, features = [
+    "macros",
+    "migrate",
+    "postgres",
+    "runtime-tokio",
+    "tls-rustls-ring",
+    "uuid",
+] }
 steamlocate = "2.1"
 tempfile = "3.27"
 thiserror = "2.0"
