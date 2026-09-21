@@ -22,7 +22,7 @@ use blackforge_core::{
     thunderstore::{FRESH_ENOUGH, PackageIndex},
 };
 use hilen::dispatch::{on_main, spawn};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, oneshot};
 
 use crate::{
     social,
@@ -147,6 +147,38 @@ pub fn change<T, Fut>(
             done(result);
         },
     );
+}
+
+/// A background sync never queues behind the user, it skips and comes back.
+pub fn busy() -> bool {
+    CHANGING.load(Ordering::SeqCst)
+}
+
+/// A status bar entry for work that already runs on the runtime, the install
+/// step of a background sync. Such work has no view that waits for a result.
+pub async fn tracked<T, Fut>(title: &str, work: impl FnOnce(Progress) -> Fut) -> Result<T>
+where
+    Fut: Future<Output = Result<T>>,
+{
+    let (progress, mut events) = Progress::channel();
+    let (sent, begun) = oneshot::channel();
+    let shown = title.to_owned();
+    on_main(move || {
+        let id = status::begin(&shown);
+        // Nobody waits for the id when the sync was dropped meanwhile.
+        if sent.send(id).is_err() {
+            status::end(id);
+        }
+    });
+    let id = begun.await?;
+    spawn(async move {
+        while let Some(event) = events.recv().await {
+            on_main(move || status::event(id, event));
+        }
+    });
+    let result = work(progress).await;
+    on_main(move || status::end(id));
+    result
 }
 
 fn start<T, Fut>(

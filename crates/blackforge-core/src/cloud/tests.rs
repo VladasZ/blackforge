@@ -4,7 +4,10 @@ use blackforge_api::setup::{Mod, Setup};
 use tempfile::tempdir;
 use tokio::fs;
 
-use super::{History, capture, portable, recover, restore::write_settings, review, validate};
+use super::{
+    Baseline, Snapshot, Step, capture, merge::review, plan, portable, recover,
+    restore::write_settings, validate,
+};
 use crate::{
     config::ConfigFile,
     error::{IoContext, Result},
@@ -26,6 +29,13 @@ fn setup(value: &str) -> Setup {
     }
 }
 
+fn snap(setup: Setup) -> Snapshot {
+    Snapshot {
+        setup,
+        local_only: Vec::new(),
+    }
+}
+
 fn add_mod(setup: &mut Setup, id: &str, version: &str) {
     setup.mods.insert(
         id.to_owned(),
@@ -44,35 +54,22 @@ fn independent_mod_and_setting_changes_merge() {
     let mut local = base.clone();
     add_mod(&mut local, "Owner-Mod", "1.2.3");
     let remote = setup("2");
-    let merged = review(&base, &base, &local, &remote).merged().unwrap();
+    let result = review(&base, &local, &remote);
+    assert!(result.incoming());
+    let merged = result.merged().unwrap();
     assert_eq!(merged.configs, remote.configs);
     assert_eq!(merged.mods, local.mods);
 }
 
 #[test]
-fn both_changed_same_setting_requires_a_choice() {
-    let mut result = review(&setup("1"), &setup("1"), &setup("2"), &setup("3"));
-    assert_eq!(result.conflicts(), 1);
+fn both_changed_same_setting_is_a_conflict_with_two_whole_sides() {
+    let result = review(&setup("1"), &setup("2"), &setup("3"));
     assert!(result.merged().is_none());
-    result.changes[0].take_remote = Some(false);
-    assert_eq!(result.merged(), Some(setup("2")));
-    result.changes[0].take_remote = Some(true);
-    assert_eq!(result.merged(), Some(setup("3")));
-}
-
-#[test]
-fn saving_local_changes_does_not_revert_pending_remote_changes() {
-    let local = setup("1");
-    let mut remote = setup("2");
-    add_mod(&mut remote, "Owner-Mod", "1.2.3");
-    let again = review(&local, &remote, &local, &remote);
-    assert_eq!(again.merged(), Some(remote.clone()));
-    assert_eq!(again.conflicts(), 0);
-    let mut edited = local.clone();
-    add_mod(&mut edited, "Owner-Another", "2.0.0");
-    let merged = review(&local, &remote, &edited, &remote).merged().unwrap();
-    assert_eq!(merged.configs, remote.configs);
-    assert_eq!(merged.mods.len(), 2);
+    assert_eq!(result.local_side(), setup("2"));
+    assert_eq!(
+        plan(Some(&setup("1")), &snap(setup("2")), Some(&setup("3")), &[]).unwrap(),
+        Step::Conflict { local: setup("2") }
+    );
 }
 
 #[test]
@@ -80,26 +77,113 @@ fn removals_resets_and_identical_edits() {
     let mut base = setup("2");
     add_mod(&mut base, "Owner-Mod", "1.2.3");
     let remote = setup("1");
+    assert_eq!(review(&base, &base, &remote).merged(), Some(remote.clone()));
+    assert!(review(&base, &remote, &remote).is_empty());
     assert_eq!(
-        review(&base, &base, &base, &remote).merged(),
-        Some(remote.clone())
-    );
-    assert!(review(&base, &base, &remote, &remote).changes.is_empty());
-    assert_eq!(
-        review(&base, &base, &Setup::default(), &base).merged(),
+        review(&base, &Setup::default(), &base).merged(),
         Some(Setup::default())
     );
     let mut local = base.clone();
     add_mod(&mut local, "Owner-Mod", "2.0.0");
-    assert_eq!(review(&base, &base, &local, &remote).conflicts(), 1);
+    assert!(review(&base, &local, &remote).merged().is_none());
 }
 
 #[test]
-fn first_machine_restore_does_not_upload_empty_setup() {
-    let empty = Setup::default();
+fn only_local_changes_upload_without_an_install() {
+    let base = setup("1");
+    let mut local = base.clone();
+    add_mod(&mut local, "Owner-Mod", "1.2.3");
     assert_eq!(
-        review(&empty, &empty, &empty, &setup("2")).merged(),
-        Some(setup("2"))
+        plan(Some(&base), &snap(local.clone()), Some(&base), &[]).unwrap(),
+        Step::Merge {
+            merged: local,
+            install: false,
+            upload: true,
+        }
+    );
+}
+
+#[test]
+fn only_cloud_changes_install_without_an_upload() {
+    let base = setup("1");
+    let remote = setup("2");
+    assert_eq!(
+        plan(Some(&base), &snap(base.clone()), Some(&remote), &[]).unwrap(),
+        Step::Merge {
+            merged: remote.clone(),
+            install: true,
+            upload: false,
+        }
+    );
+    assert_eq!(
+        plan(Some(&remote), &snap(remote.clone()), Some(&remote), &[]).unwrap(),
+        Step::Settled
+    );
+}
+
+// The upload is held behind the install. A machine that cannot install the
+// cloud side must not save its own changes on top of it.
+#[test]
+fn changes_on_both_sides_install_before_they_upload() {
+    let base = setup("1");
+    let mut local = base.clone();
+    add_mod(&mut local, "Owner-Mod", "1.2.3");
+    let step = plan(Some(&base), &snap(local), Some(&setup("2")), &[]).unwrap();
+    assert!(matches!(
+        step,
+        Step::Merge {
+            install: true,
+            upload: true,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn an_account_with_nothing_saved_takes_the_local_setup() {
+    let mut local = setup("1");
+    add_mod(&mut local, "Owner-Mod", "1.2.3");
+    // A stale baseline must not read the missing head as "everything removed".
+    assert_eq!(
+        plan(Some(&local), &snap(local.clone()), None, &[]).unwrap(),
+        Step::Merge {
+            merged: local,
+            install: false,
+            upload: true,
+        }
+    );
+}
+
+#[test]
+fn first_sign_in_on_a_fresh_machine_takes_the_cloud_setup() {
+    let loaders = ["denikson-BepInExPack_Valheim".to_owned()];
+    let mut local = setup("1");
+    add_mod(&mut local, &loaders[0], "5.4.2202");
+    let mut remote = setup("2");
+    add_mod(&mut remote, "Owner-Mod", "1.2.3");
+    assert_eq!(
+        plan(None, &snap(local), Some(&remote), &loaders).unwrap(),
+        Step::Merge {
+            merged: remote.clone(),
+            install: true,
+            upload: false,
+        }
+    );
+}
+
+#[test]
+fn first_sign_in_with_own_mods_is_a_conflict_even_without_a_shared_key() {
+    let mut local = Setup::default();
+    add_mod(&mut local, "Owner-Mine", "1.0.0");
+    let mut remote = Setup::default();
+    add_mod(&mut remote, "Owner-Theirs", "1.0.0");
+    assert_eq!(
+        plan(None, &snap(local.clone()), Some(&remote), &[]).unwrap(),
+        Step::Conflict { local }
+    );
+    assert_eq!(
+        plan(None, &snap(remote.clone()), Some(&remote), &[]).unwrap(),
+        Step::Settled
     );
 }
 
@@ -108,7 +192,7 @@ fn a_machine_local_path_never_deletes_or_replaces_the_cloud_value() {
     use super::Key;
     let local = Setup::default();
     let remote = setup("default");
-    let mut result = review(&setup("old"), &setup("old"), &local, &remote);
+    let mut result = review(&setup("old"), &local, &remote);
     result.keep_local_only(
         &remote,
         &[Key::Setting {
@@ -117,7 +201,7 @@ fn a_machine_local_path_never_deletes_or_replaces_the_cloud_value() {
             key: "count".to_owned(),
         }],
     );
-    assert!(result.changes.is_empty());
+    assert!(result.is_empty());
     assert_eq!(result.merged(), Some(remote));
 }
 
@@ -175,23 +259,34 @@ async fn fresh_config_restore_preserves_local_secrets_and_round_trips() -> Resul
 }
 
 #[tokio::test]
-async fn history_is_isolated_by_account_and_replaceable() -> Result<()> {
+async fn baseline_is_isolated_by_account_and_replaceable() -> Result<()> {
     let temp = tempdir().unwrap();
-    let history = History {
-        local: setup("1"),
-        cloud: setup("2"),
-    };
-    history.save(temp.path(), "account-a").await?;
-    history.save(temp.path(), "account-a").await?;
+    let old = temp.path().join("cloud-account-a.json");
+    fs::write(&old, "two snapshots of an old release")
+        .await
+        .at(&old)?;
+    assert!(Baseline::read(temp.path(), "account-a").await?.is_none());
+    Baseline { setup: setup("1") }
+        .save(temp.path(), "account-a")
+        .await?;
+    Baseline { setup: setup("2") }
+        .save(temp.path(), "account-a")
+        .await?;
     assert_eq!(
-        History::read(temp.path(), "account-a").await?.cloud,
+        Baseline::read(temp.path(), "account-a")
+            .await?
+            .unwrap()
+            .setup,
         setup("2")
     );
-    assert_eq!(
-        History::read(temp.path(), "account-b").await?.cloud,
-        Setup::default()
+    assert!(!fs::try_exists(&old).await.at(&old)?);
+    assert!(Baseline::read(temp.path(), "account-b").await?.is_none());
+    assert!(
+        Baseline::default()
+            .save(temp.path(), "../escape")
+            .await
+            .is_err()
     );
-    assert!(history.save(temp.path(), "../escape").await.is_err());
     Ok(())
 }
 

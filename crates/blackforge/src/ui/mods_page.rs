@@ -216,7 +216,6 @@ impl ModsPage {
                         self.empty.set_hidden(!rows.is_empty());
                         self.rows = rows;
                         self.table.reload_data();
-                        self.cloud.load();
                     }
                     Err(error) => toast::failure(&error),
                 }

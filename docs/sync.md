@@ -1,8 +1,10 @@
 # Sync between machines
 
-Signing in with the same Google account saves the desktop app's `default` profile
-for other machines. Only the main setup is synced. The CLI can edit that profile;
-the desktop app picks up those changes when it next checks.
+Signing in with the same Google account keeps the desktop app's `default` profile
+the same on every machine. It works like Steam cloud saves: no buttons, every
+change uploads, and another machine installs it by itself. Only the main setup
+is synced. The CLI can edit that profile; the desktop app picks up those changes
+when it next checks.
 
 ## What is saved
 
@@ -11,52 +13,92 @@ enabled states, and portable values from every `.cfg` file under `BepInEx/config
 It includes default values and settings without default comments, so it can restore
 a fresh installation. It does not upload game saves, mod archives, login tokens,
 game folders or launch arguments. Secret-looking values and absolute local paths
-are excluded. This uses a separate route and table from friend sharing.
+are excluded. This uses separate routes and a separate table from friend sharing.
 
-## Saving and applying
+## When it runs
 
-Checks run at launch, after profile changes, after the game exits, and every minute
-while signed in and the game is closed. Network failures retain local changes for
-the next check. A fresh machine reads the cloud before attempting an upload.
+A sync runs at launch, after every profile change, after a config edit, after the
+game exits, before the game starts, and every minute while signed in and the game
+is closed. The Run button waits for the sync, the same way Steam does. If the
+server cannot be reached or an install fails, the game starts on the local setup.
 
-Independent changes merge automatically. Conflicts wait for review in the cloud
-sync area above the Mods list. The existing config picker shows local and cloud values for both mods and
-settings. Every conflict needs a choice. Applying is always manual; background
-saves never change the installed mods or settings.
+## What one sync does
 
-Each account has a local `cloud-<account-id>.json` history with separate snapshots
-of the last observed local setup and last acknowledged cloud setup. Saving local
-changes does not mark pending remote changes as installed. Server writes compare
-the supplied revision with the stored revision, so stale clients cannot overwrite
-newer changes. Apply rechecks the account, revision and local snapshot.
+1. Read the head, the newest applied revision of the account.
+2. Compare three setups: the baseline this machine and the cloud last agreed on,
+   the local profile, and the head.
+3. Changes to different mods or settings merge by themselves.
+4. The cloud side is installed first. Only then the merged setup uploads. A
+   machine never saves on top of a setup it could not install.
+5. The merged setup becomes the new baseline in `sync-<account-id>.json`.
 
-Apply saves the chosen cloud setup and installs it into a sibling staging folder.
-Only a completed install replaces the live profile. A failed download leaves the
-working profile and sync history intact for retry. A backup directory makes an
-interrupted directory swap recoverable at the next startup. Exact versions must
-still be available, and the chosen dependencies must satisfy the package metadata.
-Existing local secrets and paths are retained when settings are written.
+The server compares the base revision of an upload with the head, so a stale
+machine cannot overwrite newer changes. It reads the new head and tries again.
+
+A failed install keeps the local profile, shows the reason in the status line,
+holds the upload and retries at the next check. The way out of a setup that can
+never install, such as a mod version removed from Thunderstore, is a restore
+from the history.
+
+## Conflicts
+
+A conflict means both sides changed the same mod or setting, or the merge would
+pair a mod with a dependency the other side removed. Then a dialog asks for one
+whole side: this machine or the cloud. It has no close button and sync waits for
+the answer. Picking the cloud first uploads the local setup as a revision marked
+as not applied, so a wrong pick can be restored.
+
+A machine that signs in for the first time has no baseline. A fresh profile, one
+that only holds the mod loader, takes the cloud setup with no dialog. A profile
+with own mods that differs from the cloud is a conflict.
+
+## History and restore
+
+Every upload is a revision and none is ever removed. Each revision stores the
+host name of the machine, the time, and a summary against the head before it.
+The History button above the Mods list shows them, newest first. Restore copies
+an old setup into a new head revision. Every machine, this one included, then
+installs it like any other change, and a restore can itself be restored.
+
+Revisions marked as not applied never become the head. No machine installs one
+unless the user restores it.
+
+## Installing
+
+An install goes into a sibling staging folder. Only a completed install replaces
+the live profile. A failed download leaves the working profile and the baseline
+intact. A backup directory makes an interrupted directory swap recoverable at the
+next startup. Exact versions must still be available, and the chosen dependencies
+must satisfy the package metadata. Existing local secrets and paths are retained
+when settings are written.
 
 ## Code and storage
 
-- `crates/blackforge-api/src/setup.rs`: private request and response types.
-- `backend/server/src/setup.rs`: authenticated `GET /api/setup` and `PUT /api/setup`.
-- Migration `0003_cloud_setup.sql`: one `cloud_setups` row per account, with a
-  revision and JSON snapshot. Account deletion cascades to this row.
-- `crates/blackforge-core/src/cloud`: capture, merge, validation, local history,
-  staged install and recovery.
-- `crates/blackforge/src/cloud.rs`: automatic checks and explicit apply.
-- `crates/blackforge/src/ui/sync_panel.rs`: sign in, status and review above the Mods list.
+- `crates/blackforge-api/src/setup.rs`: request and response types, and the
+  change summary both sides use.
+- `backend/server/src/sync.rs`: authenticated `GET /api/sync`, `POST /api/sync`,
+  `GET /api/sync/history` and `POST /api/sync/restore`. A save locks the account
+  row, so the compare with the head and the insert cannot interleave.
+- Migration `0004_cloud_revisions.sql`: one `cloud_revisions` row per revision.
+  It replaced the one row per account of `0003`. Account deletion cascades.
+- `crates/blackforge-core/src/cloud`: capture, merge, the `plan` step, the
+  baseline file, staged install and recovery.
+- `crates/blackforge/src/cloud.rs`: the automatic flow, conflict handling,
+  history and restore.
+- `crates/blackforge/src/ui/sync_panel.rs`: sign in, the status line and the
+  History button. `conflict_dialog.rs` and `history_modal.rs` are the two modals.
 
 The routes use the authenticated account directly and do not require a public
-username. Friends cannot read the private snapshot. Old app releases keep using
-the unchanged friend-sharing API.
+username. Friends cannot read the private snapshots.
+
+Releases up to 0.1.8 used `GET` and `PUT /api/setup` with a manual review step.
+Those routes are gone, so these releases cannot sync until they update.
 
 ## Checks
 
-`cargo test --workspace` covers merging, removals, resets, conflict choices,
-pending remote changes, account isolation, portable settings, fresh config files,
-failed installation and recovery, and rejection of anonymous API requests.
-The Windows desktop Mods page was checked using an isolated `BLACKFORGE_HOME`.
-Database-backed and physical Windows-to-Mac round-trip checks remain separate
-from these automated tests.
+`cargo test --workspace` covers merging, removals, resets, conflicts, install
+before upload, an account with nothing saved, first sign in on a fresh machine
+and with own mods, account isolation of the baseline, portable settings, fresh
+config files, failed installation and recovery, the change summary, and rejection
+of anonymous API requests. Database-backed route checks and a physical round trip
+between two machines remain separate from these automated tests.

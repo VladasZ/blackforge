@@ -3,9 +3,9 @@
 
 use std::time::Duration;
 
-use blackforge_api::setup::{SaveResult, SaveSetup, SetupAccount};
 use blackforge_api::{
     ApiError, FoundUser, FriendName, Friends, Me, Search, SetUsername, SharedProfile, Status,
+    setup::{Account, HistoryRow, Restore, Save, Saved},
 };
 use reqwest::{Method, RequestBuilder, StatusCode};
 use serde::de::DeserializeOwned;
@@ -25,14 +25,6 @@ pub struct SocialClient {
 }
 
 impl SocialClient {
-    pub async fn setup(&self) -> Result<SetupAccount> {
-        self.read(self.request(Method::GET, "/api/setup")).await
-    }
-
-    pub async fn save_setup(&self, setup: &SaveSetup) -> Result<SaveResult> {
-        self.read(self.request(Method::PUT, "/api/setup").json(setup))
-            .await
-    }
     pub fn new(token: impl Into<String>) -> Result<Self> {
         Self::with_server(SERVER, token)
     }
@@ -105,6 +97,29 @@ impl SocialClient {
         self.send(
             self.request(Method::POST, "/api/status")
                 .json(&Status { in_game }),
+        )
+        .await
+    }
+
+    /// The account and the setup every machine of it installs.
+    pub async fn sync_head(&self) -> Result<Account> {
+        self.read(self.request(Method::GET, "/api/sync")).await
+    }
+
+    pub async fn sync_save(&self, save: &Save) -> Result<Saved> {
+        self.read(self.request(Method::POST, "/api/sync").json(save))
+            .await
+    }
+
+    pub async fn sync_history(&self) -> Result<Vec<HistoryRow>> {
+        self.read(self.request(Method::GET, "/api/sync/history"))
+            .await
+    }
+
+    pub async fn sync_restore(&self, restore: &Restore) -> Result<Saved> {
+        self.read(
+            self.request(Method::POST, "/api/sync/restore")
+                .json(restore),
         )
         .await
     }

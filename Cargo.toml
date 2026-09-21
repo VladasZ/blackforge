@@ -11,6 +11,7 @@ version = "0.1.8"
 
 [workspace.dependencies]
 chrono = "0.4"
+gethostname = "1.1"
 plat = "0.9"
 web-sys = { version = "0.3", features = ["Location", "Window"] }
 winresource = "0.1"

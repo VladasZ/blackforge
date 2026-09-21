@@ -13,42 +13,24 @@ pub enum Key {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Entry {
+enum Entry {
     Mod(Mod),
     Setting(String),
 }
 
-impl Entry {
-    pub fn label(&self) -> String {
-        match self {
-            Self::Mod(value) => format!(
-                "{} · {} · {}",
-                value.version,
-                if value.enabled { "on" } else { "off" },
-                match value.requested.as_deref() {
-                    None => "dependency",
-                    Some("*") => "auto",
-                    Some(_) => "pinned",
-                }
-            ),
-            Self::Setting(value) => value.clone(),
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
-pub struct Change {
-    pub key: Key,
-    pub local: Option<Entry>,
-    pub remote: Option<Entry>,
-    /// None requires an explicit decision from the user.
-    pub take_remote: Option<bool>,
+struct Change {
+    key: Key,
+    local: Option<Entry>,
+    remote: Option<Entry>,
+    /// None when both sides changed the key, only the user can settle that.
+    take_remote: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Review {
-    pub local: Setup,
-    pub changes: Vec<Change>,
+    local: Setup,
+    changes: Vec<Change>,
     preserved: BTreeMap<Key, Entry>,
 }
 
@@ -62,13 +44,19 @@ impl Review {
             .filter(|(key, _)| keys.contains(key))
             .collect();
     }
-    pub fn conflicts(&self) -> usize {
-        self.changes
-            .iter()
-            .filter(|change| change.take_remote.is_none())
-            .count()
+
+    pub fn is_empty(&self) -> bool {
+        self.changes.is_empty()
     }
 
+    /// The cloud holds something this machine has not installed yet.
+    pub fn incoming(&self) -> bool {
+        self.changes
+            .iter()
+            .any(|change| change.take_remote == Some(true))
+    }
+
+    /// None while a conflict waits for the user.
     pub fn merged(&self) -> Option<Setup> {
         let mut entries = flatten(&self.local);
         for change in &self.changes {
@@ -86,13 +74,19 @@ impl Review {
         entries.extend(self.preserved.clone());
         Some(expand(entries))
     }
+
+    /// The whole local side, what the user keeps by picking this machine.
+    pub fn local_side(&self) -> Setup {
+        let mut entries = flatten(&self.local);
+        entries.extend(self.preserved.clone());
+        expand(entries)
+    }
 }
 
-/// Keep separate local and cloud baselines: saving local changes must not
-/// acknowledge remote changes which this machine has not installed yet.
-pub fn review(local_base: &Setup, cloud_base: &Setup, local: &Setup, remote: &Setup) -> Review {
-    let lb = flatten(local_base);
-    let cb = flatten(cloud_base);
+/// `base` is the setup this machine and the cloud last agreed on. A machine
+/// installs the cloud side before it uploads, so one baseline is enough.
+pub fn review(base: &Setup, local: &Setup, remote: &Setup) -> Review {
+    let b = flatten(base);
     let l = flatten(local);
     let r = flatten(remote);
     let keys: BTreeSet<_> = l.keys().chain(r.keys()).cloned().collect();
@@ -104,9 +98,7 @@ pub fn review(local_base: &Setup, cloud_base: &Setup, local: &Setup, remote: &Se
             if mine == theirs {
                 return None;
             }
-            let local_changed = mine != lb.get(&key);
-            let remote_changed = theirs != cb.get(&key) || lb.get(&key) != cb.get(&key);
-            let take_remote = match (local_changed, remote_changed) {
+            let take_remote = match (mine != b.get(&key), theirs != b.get(&key)) {
                 (true, true) => None,
                 (true, false) => Some(false),
                 _ => Some(true),
@@ -124,6 +116,25 @@ pub fn review(local_base: &Setup, cloud_base: &Setup, local: &Setup, remote: &Se
         changes,
         preserved: BTreeMap::new(),
     }
+}
+
+/// A machine that never synced this account has no baseline. Its setup and
+/// the cloud setup share no history, so merging them key by key would build a
+/// mix neither machine ever had. Any difference is one conflict for the user.
+pub fn first_review(local: &Setup, remote: &Setup, loaders: &[String]) -> Review {
+    let fresh = local
+        .mods
+        .iter()
+        .all(|(id, value)| value.requested.is_none() || loaders.contains(id));
+    if fresh {
+        // A new installation only holds what the app created by itself.
+        return review(local, local, remote);
+    }
+    let mut result = review(&Setup::default(), local, remote);
+    for change in &mut result.changes {
+        change.take_remote = None;
+    }
+    result
 }
 
 fn flatten(setup: &Setup) -> BTreeMap<Key, Entry> {

@@ -2,8 +2,8 @@
 //! engine, and the friends api of the app.
 
 mod routes;
-mod setup;
 mod site;
+mod sync;
 
 use std::env;
 
@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
     let app = base_routes("blackforge")
         .merge(auth_routes(auth))
         .merge(routes::routes())
-        .merge(setup::routes())
+        .merge(sync::routes())
         .merge(site::routes())
         .with_state(db);
 

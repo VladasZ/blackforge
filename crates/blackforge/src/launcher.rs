@@ -20,7 +20,12 @@ use hilen::{
 };
 use tokio::process::Child;
 
-use crate::{backend, social, ui::toast};
+use crate::{
+    backend,
+    cloud::{self, Launch},
+    social,
+    ui::toast,
+};
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -64,6 +69,34 @@ fn start(game_dir: Option<PathBuf>) {
         toast::info("the game is already running");
         return;
     }
+    if !social::signed_in() {
+        launch(game_dir);
+        return;
+    }
+    // Like Steam, the game waits for the newest setup. A machine that plays
+    // on an old one writes settings that conflict with the cloud later.
+    backend::load(
+        "syncing with the cloud",
+        |_, progress| async move { Ok(cloud::before_launch(&progress).await) },
+        move |result| match result {
+            Ok(Launch::Ready) => launch(game_dir),
+            Ok(Launch::Conflict(pending)) => cloud::ask(*pending, move |settled| {
+                if settled {
+                    launch(game_dir);
+                } else {
+                    RUNNING.store(false, Ordering::SeqCst);
+                }
+            }),
+            Err(error) => {
+                RUNNING.store(false, Ordering::SeqCst);
+                toast::failure(&error);
+            }
+        },
+    );
+}
+
+/// `RUNNING` is set by now, every way out that starts no game clears it.
+fn launch(game_dir: Option<PathBuf>) {
     let game_args: Vec<String> = game_args().split_whitespace().map(str::to_owned).collect();
 
     backend::load(

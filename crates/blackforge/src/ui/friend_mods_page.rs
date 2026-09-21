@@ -229,7 +229,6 @@ impl FriendModsPage {
 
     fn pick(self: Weak<Self>, mod_name: String, files: Vec<PickerFile>) {
         let input = PickerInput {
-            sync: false,
             friend: self.friend.clone(),
             mod_name,
             files,

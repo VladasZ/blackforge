@@ -1,13 +1,15 @@
-//! Private setup snapshots, three-way review, and staged installation.
+//! Private setup snapshots, automatic merging, and staged installation.
 mod merge;
+mod plan;
 mod restore;
 mod snapshot;
 mod state;
 
-pub use merge::{Change, Entry, Key, Review, review};
+pub use merge::Key;
+pub use plan::{Step, plan};
 pub use restore::{recover, restore};
-pub use snapshot::{capture, portable, snapshot, validate};
-pub use state::History;
+pub use snapshot::{Snapshot, capture, portable, snapshot, validate};
+pub use state::Baseline;
 
 #[cfg(test)]
 mod tests;
