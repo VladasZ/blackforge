@@ -22,6 +22,10 @@ game exits, before the game starts, and every minute while signed in and the gam
 is closed. The Run button waits for the sync, the same way Steam does. If the
 server cannot be reached or an install fails, the game starts on the local setup.
 
+After the sync the Run button installs every mod file the lock lists and the
+install state lacks, so there is no separate install button. A new `default`
+profile installs the mod loader right after it is created.
+
 ## What one sync does
 
 1. Read the head, the newest applied revision of the account.
@@ -56,9 +60,10 @@ with own mods that differs from the cloud is a conflict.
 
 Every upload is a revision and none is ever removed. Each revision stores the
 host name of the machine, the time, and a summary against the head before it.
-The History button above the Mods list shows them, newest first. Restore copies
-an old setup into a new head revision. Every machine, this one included, then
-installs it like any other change, and a restore can itself be restored.
+The History button on the cloud sync card above the Mods list shows them, newest
+first. Restore copies an old setup into a new head revision. Every machine, this
+one included, then installs it like any other change, and a restore can itself be
+restored.
 
 Revisions marked as not applied never become the head. No machine installs one
 unless the user restores it.
@@ -85,8 +90,9 @@ when settings are written.
   baseline file, staged install and recovery.
 - `crates/blackforge/src/cloud.rs`: the automatic flow, conflict handling,
   history and restore.
-- `crates/blackforge/src/ui/sync_panel.rs`: sign in, the status line and the
-  History button. `conflict_dialog.rs` and `history_modal.rs` are the two modals.
+- `crates/blackforge/src/ui/sync_panel.rs`: the cloud sync card with sign in, the
+  status line and the History button. `conflict_dialog.rs` and `history_modal.rs`
+  are the two modals.
 
 The routes use the authenticated account directly and do not require a public
 username. Friends cannot read the private snapshots.

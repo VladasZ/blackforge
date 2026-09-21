@@ -68,9 +68,13 @@ pub async fn profile(forge: &Forge, progress: &Progress) -> Result<Profile> {
     let profile = match forge.store().get(DEFAULT_PROFILE).await {
         Ok(profile) => profile,
         Err(Error::ProfileNotFound(_)) => {
-            forge
+            let profile = forge
                 .create_profile(DEFAULT_PROFILE, VALHEIM, Target::Client, progress)
-                .await?
+                .await?;
+            // The lock of a new profile names the mod loader, but none of its
+            // files is on disk yet, and the game cannot start without them.
+            forge.sync(&profile, progress).await?;
+            profile
         }
         Err(error) => return Err(error.into()),
     };

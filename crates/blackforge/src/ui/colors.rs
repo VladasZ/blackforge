@@ -30,6 +30,7 @@ pub const NAV_HOVER_BG: DynamicColor = DynamicColor::new(
 );
 
 pub const ACCENT: Color = Color::hex("#e8590c");
+pub const ACCENT_BG: Color = Color::hex("#e8590c").with_alpha(0.12);
 pub const ON_ACCENT: Color = Color::hex("#ffffff");
 pub const OK: Color = Color::hex("#22a35a");
 pub const OK_BG: Color = Color::hex("#22a35a").with_alpha(0.14);

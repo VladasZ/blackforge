@@ -104,6 +104,10 @@ fn launch(game_dir: Option<PathBuf>) {
         move |forge, progress| async move {
             let held = backend::PROFILE_IO.lock().await;
             let profile = backend::profile(forge, &progress).await?;
+            // The command line can change the lock without installing, and the
+            // install after a new profile can fail. When nothing is missing
+            // this only reads the install state, no network.
+            forge.sync(&profile, &progress).await?;
             let manifest = profile.manifest().await?;
             let game = forge.game(&manifest).await?;
             let install = match forge.locate_game(&game, game_dir).await {

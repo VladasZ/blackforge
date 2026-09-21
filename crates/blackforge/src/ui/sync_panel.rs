@@ -1,5 +1,5 @@
-//! The cloud sync line above the Mods list. Sync runs by itself, so this only
-//! says how it goes and opens the history.
+//! The cloud sync card above the Mods list. Sync runs by itself, so the card
+//! only says how it goes and opens the history.
 
 use std::cell::Cell;
 
@@ -7,13 +7,25 @@ use hilen::{
     Event,
     login::GoogleLoginButton,
     refs::Weak,
-    ui::{Button, Label, ModalView, Setup, ViewData, view},
+    ui::{Container, ImageView, Label, ModalView, Setup, ViewData, view},
 };
 
 use crate::{
     cloud, social,
-    ui::{history_modal::HistoryModal, style, toast},
+    ui::{colors, history_modal::HistoryModal, icon_label_button::IconLabelButton, style, toast},
 };
+
+pub const HEIGHT: f32 = 60.0;
+
+const PAD: f32 = 12.0;
+const BADGE: f32 = 36.0;
+const ICON: f32 = 22.0;
+const GAP: f32 = 14.0;
+const LOGIN_W: f32 = 220.0;
+const TEXT_L: f32 = PAD + BADGE + GAP;
+const TITLE_T: f32 = 11.0;
+/// A failure text longer than this is cut, the toast shows it in full.
+const TEXT_MAX: f32 = 440.0;
 
 thread_local! {
     static PANEL: Cell<Weak<SyncPanel>> = const { Cell::new(Weak::const_default()) };
@@ -41,32 +53,55 @@ pub fn applied() {
 #[view]
 pub struct SyncPanel {
     pub applied: Event,
+    /// The width of the usual status texts, measured once. The button only
+    /// moves for a text longer than these.
+    usual: f32,
 
     #[init]
+    badge: Container,
+    icon: ImageView,
     title: Label,
     status: Label,
     login: GoogleLoginButton,
-    history: Button,
+    history: IconLabelButton,
 }
 
 impl Setup for SyncPanel {
-    fn setup(self: Weak<Self>) {
+    fn setup(mut self: Weak<Self>) {
+        style::card(self);
+
+        self.badge.set_color(colors::ACCENT_BG);
+        self.badge.set_corner_radius(10);
+        self.badge.place().l(PAD).center_y().size(BADGE, BADGE);
+        // A sibling of the badge, not its child. It is declared after the
+        // badge, so it draws over it.
+        self.icon.set_image("sync_cloud.svg");
+        self.icon
+            .place()
+            .l(PAD + (BADGE - ICON) / 2.0)
+            .center_y()
+            .size(ICON, ICON);
+
+        // The title over the status, right of the badge.
         style::body(self.title);
         self.title.set_text("Cloud sync");
-        self.title.place().t(0).l(0).size(100, 32);
+        self.title.place().l(TEXT_L).t(TITLE_T).size(TEXT_MAX, 18);
+
         style::dim(self.status);
-        self.status.set_multiline(true);
-        self.status.place().t(0).l(108).r(0).h(32);
-        self.login.place().t(38).l(0).size(220, 36);
+        self.status.set_ellipsize(true);
+        self.status.set_text("Synced 59 minutes ago");
+        self.usual = self.status.content_size().width;
+
         self.login.logged_in.val(move |_| {
             self.show();
             cloud::schedule();
         });
         self.login.failed.val(toast::error);
-        style::ghost(self.history, "History");
-        self.history.place().t(38).l(0).size(100, style::BUTTON_H);
+
+        self.history.set("sync_history.svg", "History");
         self.history
-            .on_tap(|| HistoryModal::show_modally_with_input((), |_| {}));
+            .tapped
+            .sub(|| HistoryModal::show_modally_with_input((), |_| {}));
 
         PANEL.with(|slot| slot.set(self));
         self.show();
@@ -79,11 +114,36 @@ impl SyncPanel {
         let signed_in = social::signed_in();
         self.login.set_hidden(signed_in);
         self.history.set_hidden(!signed_in);
+
         if signed_in {
             self.status.set_text(cloud::status().text());
         } else {
             self.status
                 .set_text("Sign in to keep your mods and settings the same on every machine.");
         }
+        let text = self.status.content_size().width.clamp(self.usual, TEXT_MAX);
+        self.status
+            .place()
+            .clear()
+            .l(TEXT_L)
+            .t(TITLE_T + 20.0)
+            .size(text, 18);
+
+        // The one visible button stands right of the text block, centered on
+        // the height of the whole card.
+        let left = TEXT_L + text + GAP;
+        let history = self.history.set("sync_history.svg", "History");
+        self.history
+            .place()
+            .clear()
+            .l(left)
+            .center_y()
+            .size(history, style::BUTTON_H);
+        self.login
+            .place()
+            .clear()
+            .l(left)
+            .center_y()
+            .size(LOGIN_W, 36);
     }
 }

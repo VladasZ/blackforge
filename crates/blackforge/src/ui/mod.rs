@@ -12,6 +12,7 @@ mod game_panel;
 mod hint;
 mod history_modal;
 mod icon_button;
+mod icon_label_button;
 mod mod_icon;
 mod mod_info;
 mod mods_page;

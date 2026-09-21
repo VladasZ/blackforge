@@ -1,5 +1,5 @@
 //! The game card with the run button, and under it the mods of the active
-//! profile: enable, disable, remove, update and sync.
+//! profile: enable, disable, remove and update.
 
 use std::collections::HashMap;
 
@@ -19,8 +19,9 @@ use crate::{
         game_panel::{self, GamePanel},
         mod_icon::ModIcon,
         mod_info::ModInfo,
+        pill::{self, Pill},
         style,
-        sync_panel::SyncPanel,
+        sync_panel::{self, SyncPanel},
         toast,
     },
 };
@@ -28,7 +29,11 @@ use crate::{
 const GAME_T: f32 = 24.0;
 /// The mods header and the table sit this far under the top of the page.
 const MODS_T: f32 = GAME_T + game_panel::HEIGHT;
-const ROW_HEIGHT: f32 = 58.0;
+const ROW_HEIGHT: f32 = 64.0;
+/// The table starts this far under the cloud sync line.
+const LIST_GAP: f32 = 12.0;
+const PILL_GAP: f32 = 6.0;
+const PILLS_T: f32 = 32.0;
 const ICON: f32 = 36.0;
 /// The name and the detail start right of the icon.
 const TEXT_LEFT: f32 = 4.0 + ICON + 12.0;
@@ -84,7 +89,6 @@ pub struct ModsPage {
     subtitle: Label,
     check: Button,
     update: Button,
-    sync: Button,
     cloud: SyncPanel,
     empty: Label,
     table: TableView,
@@ -113,19 +117,11 @@ impl Setup for ModsPage {
             .l(style::PAGE_PAD)
             .size(500, 16);
 
-        style::primary(self.sync, "install files");
-        self.sync
-            .place()
-            .t(MODS_T + 28.0)
-            .r(style::PAGE_PAD)
-            .size(104, style::BUTTON_H);
-        self.sync.on_tap(move || self.sync_profile());
-
         style::ghost(self.update, "update all");
         self.update
             .place()
             .t(MODS_T + 28.0)
-            .r(style::PAGE_PAD + 112.0)
+            .r(style::PAGE_PAD)
             .size(100, style::BUTTON_H);
         self.update.on_tap(move || self.update_all());
 
@@ -133,7 +129,7 @@ impl Setup for ModsPage {
         self.check
             .place()
             .t(MODS_T + 28.0)
-            .r(style::PAGE_PAD + 220.0)
+            .r(style::PAGE_PAD + 108.0)
             .size(140, style::BUTTON_H);
         self.check.on_tap(move || self.check_updates());
 
@@ -142,7 +138,7 @@ impl Setup for ModsPage {
             .t(MODS_T + style::HEADER)
             .l(style::PAGE_PAD)
             .r(style::PAGE_PAD)
-            .h(84);
+            .h(sync_panel::HEIGHT);
         self.cloud.applied.sub(move || self.reload());
 
         style::dim(self.empty);
@@ -152,7 +148,7 @@ impl Setup for ModsPage {
         self.empty.set_hidden(true);
         self.empty
             .place()
-            .t(MODS_T + style::HEADER + 136.0)
+            .t(MODS_T + style::HEADER + sync_panel::HEIGHT + LIST_GAP + 40.0)
             .l(0)
             .r(0)
             .h(20);
@@ -161,7 +157,7 @@ impl Setup for ModsPage {
         style::table(self.table);
         self.table
             .place()
-            .t(MODS_T + style::HEADER + 96.0)
+            .t(MODS_T + style::HEADER + sync_panel::HEIGHT + LIST_GAP)
             .l(style::PAGE_PAD)
             .r(style::PAGE_PAD)
             .b(0);
@@ -220,17 +216,6 @@ impl ModsPage {
                     Err(error) => toast::failure(&error),
                 }
             },
-        );
-    }
-
-    fn sync_profile(self: Weak<Self>) {
-        backend::change(
-            "syncing the mods",
-            |forge, progress| async move {
-                let profile = backend::profile(forge, &progress).await?;
-                Ok(forge.sync(&profile, &progress).await?)
-            },
-            move |result| self.report(result.map(|report| sync_summary(&report))),
         );
     }
 
@@ -378,7 +363,8 @@ struct ModCell {
     #[init]
     icon: ModIcon,
     name: Label,
-    detail: Label,
+    version: Pill,
+    note: Pill,
     newer: Label,
     enabled: Switch,
     remove: Button,
@@ -391,10 +377,7 @@ impl Setup for ModCell {
 
         style::body(self.name);
         self.name.set_ellipsize(true);
-        self.name.place().t(10).l(TEXT_LEFT).r(330).h(20);
-
-        style::dim(self.detail);
-        self.detail.place().t(32).l(TEXT_LEFT).r(330).h(16);
+        self.name.place().t(8).l(TEXT_LEFT).r(330).h(20);
 
         style::dim(self.newer);
         self.newer.set_text_color(colors::ACCENT);
@@ -437,12 +420,29 @@ impl ModCell {
         self.name
             .set_text_color(if row.enabled { colors::FG } else { colors::DIM });
 
-        let detail = if row.note.is_empty() {
-            row.version.clone()
-        } else {
-            format!("{}, {}", row.version, row.note)
+        // The pills sit left to right under the name, each as wide as its text.
+        let version = self.version.set("pill_version.svg", &row.version);
+        self.version
+            .place()
+            .clear()
+            .l(TEXT_LEFT)
+            .t(PILLS_T)
+            .size(version, pill::HEIGHT);
+        let icon = match row.note {
+            "dependency" => "pill_dependency.svg",
+            "pinned" => "pill_pinned.svg",
+            _ => "pill_disabled.svg",
         };
-        self.detail.set_text(detail);
+        self.note.set_hidden(row.note.is_empty());
+        if !row.note.is_empty() {
+            let note = self.note.set(icon, row.note);
+            self.note
+                .place()
+                .clear()
+                .l(TEXT_LEFT + version + PILL_GAP)
+                .t(PILLS_T)
+                .size(note, pill::HEIGHT);
+        }
 
         self.newer.set_hidden(newest.is_none());
         if let Some(newest) = newest {
