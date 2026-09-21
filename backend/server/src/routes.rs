@@ -225,8 +225,11 @@ async fn search(
     State(db): State<PgPool>,
     Query(query): Query<Search>,
 ) -> Result<Json<Vec<FoundUser>>, AppError> {
-    let start =
-        username::normalize(&query.q).map_err(|error| AppError::BadRequest(error.to_string()))?;
+    let Some(start) = username::normalize_start(&query.q)
+        .map_err(|error| AppError::BadRequest(error.to_string()))?
+    else {
+        return Ok(Json(Vec::new()));
+    };
 
     let rows: Vec<(String, Option<String>, bool, bool, bool)> = sqlx::query_as(
         r"

@@ -3,10 +3,7 @@
 //! back.
 
 use anyhow::Result;
-use blackforge_api::{
-    FoundUser, Relation, SEARCH_LIMIT,
-    username::{self, UsernameError},
-};
+use blackforge_api::{FoundUser, Relation, username};
 use blackforge_core::social::client::SocialClient;
 use hilen::{
     dispatch::after,
@@ -28,7 +25,6 @@ const ROW_HEIGHT: f32 = 58.0;
 const FIELD_WIDTH: f32 = 320.0;
 /// The server is asked this long after the last key, not on every key.
 const TYPING_PAUSE: f32 = 0.3;
-const HINT: &str = "type the first 3 characters of a username";
 
 #[view]
 pub struct FriendSearch {
@@ -40,7 +36,6 @@ pub struct FriendSearch {
 
     #[init]
     field: TextField,
-    note: Label,
     table: TableView,
 }
 
@@ -53,10 +48,6 @@ impl Setup for FriendSearch {
             .l(0)
             .size(FIELD_WIDTH, style::FIELD_H);
         self.field.changed.val(move |text| self.text_changed(&text));
-
-        style::dim(self.note);
-        self.note.set_text(HINT);
-        self.note.place().t(9).l(FIELD_WIDTH + 14.0).r(0).h(16);
 
         self.table
             .set_data_source(self)
@@ -77,16 +68,9 @@ impl FriendSearch {
         self.typed += 1;
         let typed = self.typed;
 
-        let start = match username::normalize(text) {
-            Ok(start) => start,
-            Err(error) => {
-                self.show_found(Vec::new());
-                self.note.set_text(match error {
-                    UsernameError::TooShort => HINT.to_owned(),
-                    UsernameError::TooLong | UsernameError::BadCharacter => error.to_string(),
-                });
-                return;
-            }
+        // An empty field finds nobody, and so does text no username can hold.
+        let Ok(Some(start)) = username::normalize_start(text) else {
+            return self.show_found(Vec::new());
         };
 
         after(TYPING_PAUSE, move || {
@@ -111,27 +95,17 @@ impl FriendSearch {
     /// Asks again for what the field holds now, a request changed what the
     /// found people are to me.
     fn find_again(mut self: Weak<Self>) {
-        if let Ok(start) = username::normalize(self.field.text()) {
+        if let Ok(Some(start)) = username::normalize_start(self.field.text()) {
             self.typed += 1;
             self.find(start, self.typed);
         }
     }
 
     fn show_found(mut self: Weak<Self>, found: Vec<FoundUser>) {
-        let limit = usize::from(SEARCH_LIMIT);
-        self.note.set_text(match found.len() {
-            0 => "nobody found".to_owned(),
-            1 => "1 person".to_owned(),
-            count if count >= limit => {
-                format!("the first {limit} people, type more to narrow it down")
-            }
-            count => format!("{count} people"),
-        });
         self.found = found;
         self.table.reload_data();
     }
 
-    /// The button of a row.
     fn act(self: Weak<Self>, index: usize) {
         let Some(found) = self.found.get(index).cloned() else {
             return;

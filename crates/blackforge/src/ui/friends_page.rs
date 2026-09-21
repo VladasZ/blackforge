@@ -79,7 +79,6 @@ pub struct FriendsPage {
     state: State,
     tab: Tab,
     rows: Vec<Row>,
-    /// The link to the picture of the people in the rows, by username.
     pictures: BTreeMap<String, String>,
     polling: bool,
 

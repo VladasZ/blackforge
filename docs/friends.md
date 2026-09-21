@@ -38,8 +38,9 @@ From `backend/server/src/routes.rs`, every one wants `Authorization: Bearer <ses
 - `POST /api/me/username` sets it, once. It cannot be changed later.
 - `GET /api/users/search?q=` is everybody whose username starts with `q`, 20 at most,
   each with the picture and with what they are to me: a stranger, a friend, somebody I
-  asked, or somebody who asked me. `q` follows the username rule, so it has at least 3
-  characters. Migration `0002` adds the index the `LIKE` needs.
+  asked, or somebody who asked me. One letter is enough, the rule for `q` is
+  `username::normalize_start`. An empty `q` finds nobody. Migration `0002` adds the index
+  the `LIKE` needs.
 - `GET /api/friends` is the friends with their in game mark, and the requests in both
   directions. The pictures come as one map by username next to the lists, because the
   released apps read the requests as plain names.

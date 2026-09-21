@@ -51,7 +51,6 @@ impl SocialClient {
         self.read(self.request(Method::GET, "/api/friends")).await
     }
 
-    /// Everybody whose username starts with `start`.
     pub async fn search_users(&self, start: &str) -> Result<Vec<FoundUser>> {
         let query = Search {
             q: start.to_owned(),

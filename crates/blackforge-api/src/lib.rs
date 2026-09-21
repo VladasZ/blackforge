@@ -53,12 +53,11 @@ pub struct FriendName {
     pub username: String,
 }
 
-/// One search answers with this many people at most. The app reads a full
-/// answer as "there may be more".
 pub const SEARCH_LIMIT: u8 = 20;
 
-/// The query of `GET /api/users/search`. `q` is the start of a username and
-/// follows the same rule as a whole one, so it has at least 3 characters.
+/// The query of `GET /api/users/search`. `q` is the start of a username, one
+/// letter is enough, the rule is `username::normalize_start`. An empty `q`
+/// finds nobody.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Search {
     pub q: String,
@@ -68,12 +67,10 @@ pub struct Search {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FoundUser {
     pub username: String,
-    /// The link to the Google picture.
     pub picture: Option<String>,
     pub relation: Relation,
 }
 
-/// What the found user is to me.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Relation {
