@@ -24,6 +24,10 @@ use crate::{backend, social, ui::toast};
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
+pub fn running() -> bool {
+    RUNNING.load(Ordering::SeqCst)
+}
+
 static GAME_ARGS: LazyLock<OnDisk<String>> = LazyLock::new(|| OnDisk::new("gui-game-args.json"));
 
 /// Extra arguments for the game itself, split on spaces at launch.
@@ -65,6 +69,7 @@ fn start(game_dir: Option<PathBuf>) {
     backend::load(
         "starting the game",
         move |forge, progress| async move {
+            let held = backend::PROFILE_IO.lock().await;
             let profile = backend::profile(forge, &progress).await?;
             let manifest = profile.manifest().await?;
             let game = forge.game(&manifest).await?;
@@ -85,6 +90,7 @@ fn start(game_dir: Option<PathBuf>) {
                 inherited: &inherited_env,
             })?;
             let child = spawn_game(&plan, profile.dir()).await?;
+            drop(held);
             let label = format!("{} {}", game.display_name, manifest.target);
             Ok(Started::Running {
                 child: Box::new(child),

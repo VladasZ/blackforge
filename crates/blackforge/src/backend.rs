@@ -14,6 +14,7 @@ use std::{
 use anyhow::Result;
 use blackforge_core::{
     Error,
+    cloud::recover,
     forge::{DEFAULT_PROFILE, Forge},
     game::{Target, VALHEIM},
     profile::Profile,
@@ -40,6 +41,8 @@ static INDEX: Mutex<Option<KeptIndex>> = Mutex::const_new(None);
 /// Held while the default profile is looked up or made, so two operations
 /// that start together on a fresh machine do not both try to create it.
 static DEFAULT: Mutex<()> = Mutex::const_new(());
+static RECOVERED: AtomicBool = AtomicBool::new(false);
+pub static PROFILE_IO: Mutex<()> = Mutex::const_new(());
 
 /// Two operations that change a profile must not overlap, the second would
 /// read a manifest and a lock the first is about to replace.
@@ -58,6 +61,10 @@ pub fn forge() -> Result<&'static Forge> {
 /// machine, so no setup step exists.
 pub async fn profile(forge: &Forge, progress: &Progress) -> Result<Profile> {
     let held = DEFAULT.lock().await;
+    if !RECOVERED.load(Ordering::SeqCst) {
+        recover(&forge.data().profiles_dir().join(DEFAULT_PROFILE)).await?;
+        RECOVERED.store(true, Ordering::SeqCst);
+    }
     let profile = match forge.store().get(DEFAULT_PROFILE).await {
         Ok(profile) => profile,
         Err(Error::ProfileNotFound(_)) => {
@@ -122,15 +129,24 @@ pub fn change<T, Fut>(
         toast::info("wait for the running operation to finish");
         return;
     }
-    start(title, work, move |result| {
-        CHANGING.store(false, Ordering::SeqCst);
-        // Friends see the mods and the changed settings, so every change of
-        // the profile is a reason to send them again.
-        if result.is_ok() {
-            social::share_profile();
-        }
-        done(result);
-    });
+    start(
+        title,
+        move |forge, progress| async move {
+            let held = PROFILE_IO.lock().await;
+            let result = work(forge, progress).await;
+            drop(held);
+            result
+        },
+        move |result| {
+            CHANGING.store(false, Ordering::SeqCst);
+            // Friends see the mods and the changed settings, so every change of
+            // the profile is a reason to send them again.
+            if result.is_ok() {
+                social::share_profile();
+            }
+            done(result);
+        },
+    );
 }
 
 fn start<T, Fut>(

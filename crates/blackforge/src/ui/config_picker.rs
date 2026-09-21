@@ -12,7 +12,7 @@ use hilen::{
     },
 };
 
-use crate::ui::{colors, style};
+use crate::ui::{colors, style, toast};
 
 const PAD: f32 = 24.0;
 const ROW_HEIGHT: f32 = 64.0;
@@ -27,6 +27,7 @@ pub struct PickerFile {
 
 #[derive(Clone, Debug, Default)]
 pub struct PickerInput {
+    pub sync: bool,
     pub friend: String,
     pub mod_name: String,
     pub files: Vec<PickerFile>,
@@ -37,6 +38,7 @@ pub struct ConfigPicker {
     event: OnceEvent<Option<Vec<PickerFile>>>,
 
     files: Vec<PickerFile>,
+    sync: bool,
     /// The file and the row of every line of the table.
     lines: Vec<(usize, usize)>,
 
@@ -64,8 +66,12 @@ impl ModalView<PickerInput, Option<Vec<PickerFile>>> for ConfigPicker {
     }
 
     fn setup_input(mut self: Weak<Self>, input: PickerInput) {
-        self.title
-            .set_text(format!("{} settings of {}", input.mod_name, input.friend));
+        self.sync = input.sync;
+        self.title.set_text(if input.sync {
+            "Review main setup".to_owned()
+        } else {
+            format!("{} settings of {}", input.mod_name, input.friend)
+        });
         self.friend_head.set_text(input.friend);
 
         self.lines = input
@@ -111,8 +117,18 @@ impl Setup for ConfigPicker {
 
         style::primary(self.apply, "apply");
         self.apply.place().r(PAD).b(PAD).size(120, style::BUTTON_H);
-        self.apply
-            .on_tap(move || self.hide_modal(Some(self.files.clone())));
+        self.apply.on_tap(move || {
+            if self
+                .files
+                .iter()
+                .flat_map(|file| &file.rows)
+                .any(|row| row.pick == Pick::Pending)
+            {
+                toast::info("choose a side for every conflict first");
+            } else {
+                self.hide_modal(Some(self.files.clone()));
+            }
+        });
 
         style::ghost(self.cancel, "cancel");
         self.cancel
@@ -135,6 +151,20 @@ impl ConfigPicker {
     }
 
     fn count(self: Weak<Self>) {
+        if self.sync {
+            let pending = self
+                .files
+                .iter()
+                .flat_map(|file| &file.rows)
+                .filter(|row| row.pick == Pick::Pending)
+                .count();
+            self.subtitle.set_text(format!(
+                "{} differences, {pending} unresolved conflicts. Tap a value to keep it.",
+                self.lines.len()
+            ));
+            self.apply.set_text("Apply setup");
+            return;
+        }
         let taken = self
             .files
             .iter()

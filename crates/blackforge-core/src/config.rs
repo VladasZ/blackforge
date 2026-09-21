@@ -134,6 +134,42 @@ impl ConfigFile {
         self.lines[setting.line] = format!("{} = {value}{line_end}", setting.key);
         Ok(())
     }
+
+    /// Insert a synced setting before the next section, or update it in place.
+    pub fn upsert(&mut self, section: &str, key: &str, value: &str) -> Result<()> {
+        if self.get(section, key).is_ok() {
+            return self.set(section, key, value);
+        }
+        let mut at = if section.is_empty() { Some(0) } else { None };
+        for (index, line) in self.lines.iter().enumerate() {
+            if let Some(name) = line
+                .trim()
+                .strip_prefix('[')
+                .and_then(|s| s.strip_suffix(']'))
+            {
+                if at.is_some() {
+                    break;
+                }
+                if name.trim().eq_ignore_ascii_case(section) {
+                    at = Some(index + 1);
+                }
+            } else if at.is_some() {
+                at = Some(index + 1);
+            }
+        }
+        let at = at.unwrap_or_else(|| {
+            self.lines.push(format!("\n[{section}]"));
+            self.lines.len()
+        });
+        self.lines.insert(at, format!("{key} = {value}"));
+        Ok(())
+    }
+
+    pub fn remove(&mut self, section: &str, key: &str) {
+        if let Ok(setting) = self.get(section, key) {
+            self.lines.remove(setting.line);
+        }
+    }
 }
 
 #[derive(Default)]

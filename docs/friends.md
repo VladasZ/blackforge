@@ -4,6 +4,9 @@ Sign in with Google, friends, a friend's mods and their changed settings. Signin
 optional, the app works the same without an account. What users are told about their
 data is in `web/privacy.html`, keep the two in step.
 
+The same login also saves a private main setup for the user's other machines.
+That data is separate from what friends see; see [sync.md](sync.md).
+
 ## The parts
 
 - `backend/server` is the server. It is built on `hilen-server` and also serves the
@@ -116,8 +119,8 @@ A push to `main` is the deploy, beekeeper builds `backend/Dockerfile` and starts
 stack. The image builds the landing page first and then the server with the page
 embedded in it.
 
-The server has unit tests for its pure parts only. It was never run against a test
-Postgres, that was a decision, the real check is production. The core and the api crate
+The server has tests for its pure parts and anonymous access to the private setup
+routes. They do not use a test Postgres. The core and the api crate
 have normal unit tests, `cargo test -p blackforge-core social` and
 `cargo test -p blackforge-api`.
 

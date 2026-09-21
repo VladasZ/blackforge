@@ -19,7 +19,9 @@ use crate::{
         game_panel::{self, GamePanel},
         mod_icon::ModIcon,
         mod_info::ModInfo,
-        style, toast,
+        style,
+        sync_panel::SyncPanel,
+        toast,
     },
 };
 
@@ -83,6 +85,7 @@ pub struct ModsPage {
     check: Button,
     update: Button,
     sync: Button,
+    cloud: SyncPanel,
     empty: Label,
     table: TableView,
 }
@@ -110,19 +113,19 @@ impl Setup for ModsPage {
             .l(style::PAGE_PAD)
             .size(500, 16);
 
-        style::primary(self.sync, "sync");
+        style::primary(self.sync, "install files");
         self.sync
             .place()
             .t(MODS_T + 28.0)
             .r(style::PAGE_PAD)
-            .size(76, style::BUTTON_H);
+            .size(104, style::BUTTON_H);
         self.sync.on_tap(move || self.sync_profile());
 
         style::ghost(self.update, "update all");
         self.update
             .place()
             .t(MODS_T + 28.0)
-            .r(style::PAGE_PAD + 84.0)
+            .r(style::PAGE_PAD + 112.0)
             .size(100, style::BUTTON_H);
         self.update.on_tap(move || self.update_all());
 
@@ -130,9 +133,17 @@ impl Setup for ModsPage {
         self.check
             .place()
             .t(MODS_T + 28.0)
-            .r(style::PAGE_PAD + 192.0)
+            .r(style::PAGE_PAD + 220.0)
             .size(140, style::BUTTON_H);
         self.check.on_tap(move || self.check_updates());
+
+        self.cloud
+            .place()
+            .t(MODS_T + style::HEADER)
+            .l(style::PAGE_PAD)
+            .r(style::PAGE_PAD)
+            .h(84);
+        self.cloud.applied.sub(move || self.reload());
 
         style::dim(self.empty);
         self.empty
@@ -141,7 +152,7 @@ impl Setup for ModsPage {
         self.empty.set_hidden(true);
         self.empty
             .place()
-            .t(MODS_T + style::HEADER + 40.0)
+            .t(MODS_T + style::HEADER + 136.0)
             .l(0)
             .r(0)
             .h(20);
@@ -150,7 +161,7 @@ impl Setup for ModsPage {
         style::table(self.table);
         self.table
             .place()
-            .t(MODS_T + style::HEADER)
+            .t(MODS_T + style::HEADER + 96.0)
             .l(style::PAGE_PAD)
             .r(style::PAGE_PAD)
             .b(0);
@@ -205,6 +216,7 @@ impl ModsPage {
                         self.empty.set_hidden(!rows.is_empty());
                         self.rows = rows;
                         self.table.reload_data();
+                        self.cloud.load();
                     }
                     Err(error) => toast::failure(&error),
                 }

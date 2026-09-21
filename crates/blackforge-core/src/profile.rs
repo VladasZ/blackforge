@@ -24,6 +24,12 @@ pub struct Profile {
 }
 
 impl Profile {
+    pub(crate) fn staged(&self, dir: PathBuf) -> Self {
+        Self {
+            name: self.name.clone(),
+            dir,
+        }
+    }
     pub fn name(&self) -> &str {
         &self.name
     }

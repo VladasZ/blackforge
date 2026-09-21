@@ -21,6 +21,7 @@ mod shell;
 mod sidebar;
 pub mod status;
 mod style;
+mod sync_panel;
 pub mod toast;
 
 pub use shell::Shell;

@@ -4,6 +4,7 @@
 //! Every route wants `Authorization: Bearer <session token>` from the Google
 //! login of the engine.
 
+pub mod setup;
 pub mod username;
 
 use std::collections::BTreeMap;

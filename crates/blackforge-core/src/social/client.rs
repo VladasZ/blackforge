@@ -1,6 +1,9 @@
 //! The calls to the blackforge server. The session token comes from the
 //! Google login of the frontend, this crate never sees how it was made.
 
+use std::time::Duration;
+
+use blackforge_api::setup::{SaveResult, SaveSetup, SetupAccount};
 use blackforge_api::{
     ApiError, FoundUser, FriendName, Friends, Me, Search, SetUsername, SharedProfile, Status,
 };
@@ -22,6 +25,14 @@ pub struct SocialClient {
 }
 
 impl SocialClient {
+    pub async fn setup(&self) -> Result<SetupAccount> {
+        self.read(self.request(Method::GET, "/api/setup")).await
+    }
+
+    pub async fn save_setup(&self, setup: &SaveSetup) -> Result<SaveResult> {
+        self.read(self.request(Method::PUT, "/api/setup").json(setup))
+            .await
+    }
     pub fn new(token: impl Into<String>) -> Result<Self> {
         Self::with_server(SERVER, token)
     }
@@ -30,7 +41,11 @@ impl SocialClient {
         Ok(Self {
             server: server.trim_end_matches('/').to_owned(),
             token: token.into(),
-            http: reqwest::Client::builder().user_agent(USER_AGENT).build()?,
+            http: reqwest::Client::builder()
+                .user_agent(USER_AGENT)
+                .connect_timeout(Duration::from_secs(5))
+                .timeout(Duration::from_secs(15))
+                .build()?,
         })
     }
 

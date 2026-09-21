@@ -40,6 +40,7 @@ static GAME_RUN: AtomicU64 = AtomicU64::new(0);
 
 pub fn init() {
     GoogleLogin::set_server(SERVER);
+    crate::cloud::init();
 }
 
 pub fn signed_in() -> bool {
@@ -64,6 +65,7 @@ pub fn forget_upload() {
 /// a config edit and after the game exits. A failure only goes to the log,
 /// the user did not ask for this and the next run tries again.
 pub fn share_profile() {
+    crate::cloud::schedule();
     if !signed_in() {
         return;
     }

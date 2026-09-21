@@ -12,6 +12,7 @@ use crate::{
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pick {
+    Pending,
     Mine,
     Friend,
 }
