@@ -1,15 +1,18 @@
 //! The social routes. Every one takes a `User`, so a request with no live
 //! session never gets past the extractor.
 
+use std::collections::BTreeMap;
+
 use blackforge_api::{
-    Friend, FriendName, Friends, Me, SetUsername, SharedProfile, Status, username,
+    FoundUser, Friend, FriendName, Friends, Me, Relation, SEARCH_LIMIT, Search, SetUsername,
+    SharedProfile, Status, username,
 };
 use hilen_server::{
     AppError,
     auth::User,
     axum::{
         Json, Router,
-        extract::{Path, State},
+        extract::{Path, Query, State},
         routing::{get, post, put},
     },
 };
@@ -23,6 +26,7 @@ pub fn routes() -> Router<PgPool> {
     Router::new()
         .route("/api/me", get(me))
         .route("/api/me/username", post(set_username))
+        .route("/api/users/search", get(search))
         .route("/api/friends", get(friends))
         .route("/api/friends/request", post(request))
         .route("/api/friends/accept", post(accept))
@@ -138,12 +142,13 @@ async fn set_username(
 }
 
 async fn friends(user: User, State(db): State<PgPool>) -> Result<Json<Friends>, AppError> {
-    let rows: Vec<(String, bool)> = sqlx::query_as(
+    let rows: Vec<(String, Option<String>, bool)> = sqlx::query_as(
         r"
-SELECT p.username,
+SELECT p.username, u.picture,
        COALESCE(s.in_game AND s.last_seen > now() - make_interval(secs => $2), false)
 FROM friendships f
 JOIN profiles p ON p.user_id = CASE WHEN f.user_a = $1 THEN f.user_b ELSE f.user_a END
+JOIN users u ON u.id = p.user_id
 LEFT JOIN game_status s ON s.user_id = p.user_id
 WHERE f.user_a = $1 OR f.user_b = $1
 ORDER BY p.username",
@@ -153,10 +158,11 @@ ORDER BY p.username",
     .fetch_all(&db)
     .await?;
 
-    let incoming: Vec<(String,)> = sqlx::query_as(
+    let incoming: Vec<(String, Option<String>)> = sqlx::query_as(
         r"
-SELECT p.username FROM friend_requests r
+SELECT p.username, u.picture FROM friend_requests r
 JOIN profiles p ON p.user_id = r.from_user
+JOIN users u ON u.id = p.user_id
 WHERE r.to_user = $1
 ORDER BY r.created_at",
     )
@@ -164,10 +170,11 @@ ORDER BY r.created_at",
     .fetch_all(&db)
     .await?;
 
-    let outgoing: Vec<(String,)> = sqlx::query_as(
+    let outgoing: Vec<(String, Option<String>)> = sqlx::query_as(
         r"
-SELECT p.username FROM friend_requests r
+SELECT p.username, u.picture FROM friend_requests r
 JOIN profiles p ON p.user_id = r.to_user
+JOIN users u ON u.id = p.user_id
 WHERE r.from_user = $1
 ORDER BY r.created_at",
     )
@@ -175,14 +182,101 @@ ORDER BY r.created_at",
     .fetch_all(&db)
     .await?;
 
+    let mut pictures = BTreeMap::new();
+    let friends = rows
+        .into_iter()
+        .map(|(username, picture, in_game)| {
+            if let Some(picture) = picture {
+                pictures.insert(username.clone(), picture);
+            }
+            Friend { username, in_game }
+        })
+        .collect();
+    let incoming = names(incoming, &mut pictures);
+    let outgoing = names(outgoing, &mut pictures);
+
     Ok(Json(Friends {
-        friends: rows
-            .into_iter()
-            .map(|(username, in_game)| Friend { username, in_game })
-            .collect(),
-        incoming: incoming.into_iter().map(|(name,)| name).collect(),
-        outgoing: outgoing.into_iter().map(|(name,)| name).collect(),
+        friends,
+        incoming,
+        outgoing,
+        pictures,
     }))
+}
+
+/// Moves the pictures of the rows into the map and leaves the names.
+fn names(
+    rows: Vec<(String, Option<String>)>,
+    pictures: &mut BTreeMap<String, String>,
+) -> Vec<String> {
+    rows.into_iter()
+        .map(|(username, picture)| {
+            if let Some(picture) = picture {
+                pictures.insert(username.clone(), picture);
+            }
+            username
+        })
+        .collect()
+}
+
+/// Everybody whose username starts with the typed text, with what they are to
+/// me. Any signed in user may ask, the privacy page says so.
+async fn search(
+    user: User,
+    State(db): State<PgPool>,
+    Query(query): Query<Search>,
+) -> Result<Json<Vec<FoundUser>>, AppError> {
+    let start =
+        username::normalize(&query.q).map_err(|error| AppError::BadRequest(error.to_string()))?;
+
+    let rows: Vec<(String, Option<String>, bool, bool, bool)> = sqlx::query_as(
+        r"
+SELECT p.username, u.picture,
+       EXISTS (SELECT 1 FROM friendships f
+               WHERE (f.user_a = $1 AND f.user_b = p.user_id)
+                  OR (f.user_a = p.user_id AND f.user_b = $1)),
+       EXISTS (SELECT 1 FROM friend_requests r
+               WHERE r.from_user = $1 AND r.to_user = p.user_id),
+       EXISTS (SELECT 1 FROM friend_requests r
+               WHERE r.from_user = p.user_id AND r.to_user = $1)
+FROM profiles p
+JOIN users u ON u.id = p.user_id
+WHERE p.username LIKE $2 ESCAPE '\' AND p.user_id <> $1
+ORDER BY p.username
+LIMIT $3",
+    )
+    .bind(user.id)
+    .bind(starts_with(&start))
+    .bind(i64::from(SEARCH_LIMIT))
+    .fetch_all(&db)
+    .await?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(|(username, picture, friend, asked, asked_me)| FoundUser {
+                username,
+                picture,
+                relation: relation(friend, asked, asked_me),
+            })
+            .collect(),
+    ))
+}
+
+/// The LIKE pattern for a normalized start of a username. The underscore is a
+/// letter of a username and a wildcard of LIKE, so it is escaped.
+fn starts_with(start: &str) -> String {
+    format!("{}%", start.replace('_', r"\_"))
+}
+
+fn relation(friend: bool, asked: bool, asked_me: bool) -> Relation {
+    if friend {
+        Relation::Friend
+    } else if asked_me {
+        Relation::AskedMe
+    } else if asked {
+        Relation::Asked
+    } else {
+        Relation::Stranger
+    }
 }
 
 async fn request(
@@ -347,9 +441,40 @@ ON CONFLICT (user_id) DO UPDATE SET in_game = EXCLUDED.in_game, last_seen = now(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use blackforge_api::Relation;
     use sqlx::types::Uuid;
 
-    use super::ordered;
+    use super::{names, ordered, relation, starts_with};
+
+    #[test]
+    fn an_underscore_in_a_search_is_a_letter() {
+        assert_eq!(starts_with("vla"), "vla%");
+        assert_eq!(starts_with("iron_man"), r"iron\_man%");
+    }
+
+    #[test]
+    fn a_friendship_wins_over_a_request() {
+        assert_eq!(relation(true, true, true), Relation::Friend);
+        assert_eq!(relation(false, true, true), Relation::AskedMe);
+        assert_eq!(relation(false, true, false), Relation::Asked);
+        assert_eq!(relation(false, false, false), Relation::Stranger);
+    }
+
+    #[test]
+    fn only_a_real_picture_gets_into_the_map() {
+        let mut pictures = BTreeMap::new();
+        let rows = vec![
+            ("anna".to_owned(), Some("https://p/anna.png".to_owned())),
+            ("bob".to_owned(), None),
+        ];
+        assert_eq!(names(rows, &mut pictures), ["anna", "bob"]);
+        assert_eq!(
+            pictures,
+            BTreeMap::from([("anna".to_owned(), "https://p/anna.png".to_owned())])
+        );
+    }
 
     #[test]
     fn a_pair_is_stored_one_way_only() {

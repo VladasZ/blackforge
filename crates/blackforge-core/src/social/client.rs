@@ -1,7 +1,9 @@
 //! The calls to the blackforge server. The session token comes from the
 //! Google login of the frontend, this crate never sees how it was made.
 
-use blackforge_api::{ApiError, FriendName, Friends, Me, SetUsername, SharedProfile, Status};
+use blackforge_api::{
+    ApiError, FoundUser, FriendName, Friends, Me, Search, SetUsername, SharedProfile, Status,
+};
 use reqwest::{Method, RequestBuilder, StatusCode};
 use serde::de::DeserializeOwned;
 use serde_json::from_slice;
@@ -47,6 +49,15 @@ impl SocialClient {
 
     pub async fn friends(&self) -> Result<Friends> {
         self.read(self.request(Method::GET, "/api/friends")).await
+    }
+
+    /// Everybody whose username starts with `start`.
+    pub async fn search_users(&self, start: &str) -> Result<Vec<FoundUser>> {
+        let query = Search {
+            q: start.to_owned(),
+        };
+        self.read(self.request(Method::GET, "/api/users/search").query(&query))
+            .await
     }
 
     pub async fn request_friend(&self, username: &str) -> Result<()> {

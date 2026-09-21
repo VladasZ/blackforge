@@ -18,8 +18,10 @@ data is in `web/privacy.html`, keep the two in step.
   - `picker.rs` is the merge behind the "copy config" dialog.
 - `crates/blackforge/src/social.rs` is the glue in the window: who is signed in, the
   uploads, the in game reports.
-- `crates/blackforge/src/ui` has `friends_page.rs`, `friend_mods_page.rs` and
-  `config_picker.rs`.
+- `crates/blackforge/src/ui` has `friends_page.rs`, `friend_search.rs`,
+  `friend_mods_page.rs`, `config_picker.rs` and `avatar.rs`. The Friends page has two
+  tabs. "My friends" is the list of friends and requests. "Find people" is the search,
+  the only place a request is sent from. The two are never mixed in one list.
 
 The login itself is a part of the hilen engine, the `login` feature on the app side and
 `hilen_server::auth` on the server side. Read `docs/login.md` in the hilen repo and the
@@ -34,8 +36,13 @@ From `backend/server/src/routes.rs`, every one wants `Authorization: Bearer <ses
 
 - `GET /api/me` is my username, `null` before the first pick.
 - `POST /api/me/username` sets it, once. It cannot be changed later.
+- `GET /api/users/search?q=` is everybody whose username starts with `q`, 20 at most,
+  each with the picture and with what they are to me: a stranger, a friend, somebody I
+  asked, or somebody who asked me. `q` follows the username rule, so it has at least 3
+  characters. Migration `0002` adds the index the `LIKE` needs.
 - `GET /api/friends` is the friends with their in game mark, and the requests in both
-  directions.
+  directions. The pictures come as one map by username next to the lists, because the
+  released apps read the requests as plain names.
 - `POST /api/friends/request`, `/accept`, `/decline`, `/remove` take a username. Two
   people who ask each other become friends at once. Remove ends a friendship for both
   sides, and it also takes back a request of my own.
@@ -49,8 +56,9 @@ from the embedded `web/dist`, `manifest.json`, `updater.json` and the download c
 reports passed on to studio, and a redirect of everything else under `/download/` to
 studio. Installed apps have this host in their updater address.
 
-A friend sees a username, the mods, the shared settings and the in game mark. Never the
-email, the Google name or the picture. The privacy page promises that.
+Any signed in user can find a username by search, and sees the username and the Google
+picture. A friend also sees the mods, the shared settings and the in game mark. Nobody
+sees the email or the Google name. The privacy page promises that.
 
 ## Rules of the feature
 

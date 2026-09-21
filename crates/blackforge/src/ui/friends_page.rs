@@ -1,5 +1,8 @@
 //! Friends. Signed out it is a Google button, on the first sign in it asks
-//! for a username, after that it is the list of friends and requests.
+//! for a username, after that it is two tabs: the list of friends and
+//! requests, and the search for new people.
+
+use std::collections::BTreeMap;
 
 use anyhow::{Error as AnyError, Result};
 use blackforge_api::{Friends, username};
@@ -18,11 +21,20 @@ use hilen::{
 
 use crate::{
     backend, social,
-    ui::{colors, style, toast},
+    ui::{
+        avatar::{self, Avatar},
+        colors,
+        friend_search::FriendSearch,
+        nav_item::NavItem,
+        style, toast,
+    },
 };
 
 const ROW_HEIGHT: f32 = 58.0;
-const DOT: f32 = 10.0;
+const TAB_WIDTH: f32 = 140.0;
+const TAB_HEIGHT: f32 = 36.0;
+/// From the top of the tabs to the top of what the open tab shows.
+const TAB_CONTENT: f32 = 50.0;
 /// The list is asked for again this often while the page is open.
 const POLL_SECONDS: f32 = 30.0;
 
@@ -35,11 +47,28 @@ enum State {
     Friends,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Tab {
+    #[default]
+    Friends,
+    Search,
+}
+
 #[derive(Clone, Debug)]
 enum Row {
     Incoming(String),
     Friend { username: String, in_game: bool },
     Outgoing(String),
+}
+
+impl Row {
+    fn username(&self) -> &str {
+        match self {
+            Self::Incoming(username) | Self::Friend { username, .. } | Self::Outgoing(username) => {
+                username
+            }
+        }
+    }
 }
 
 #[view]
@@ -48,7 +77,10 @@ pub struct FriendsPage {
     pub open_friend: Event<String>,
 
     state: State,
+    tab: Tab,
     rows: Vec<Row>,
+    /// The link to the picture of the people in the rows, by username.
+    pictures: BTreeMap<String, String>,
     polling: bool,
 
     #[init]
@@ -59,9 +91,10 @@ pub struct FriendsPage {
     name_field: TextField,
     name_save: Button,
     name_note: Label,
-    add_field: TextField,
-    add_button: Button,
+    friends_tab: NavItem,
+    search_tab: NavItem,
     table: TableView,
+    search: FriendSearch,
 }
 
 impl Setup for FriendsPage {
@@ -116,19 +149,24 @@ impl Setup for FriendsPage {
             .r(style::PAGE_PAD)
             .h(16);
 
-        style::field(self.add_field, "add a friend by username");
-        self.add_field
+        self.friends_tab
+            .set_content("tab_friends.svg", "My friends");
+        self.friends_tab
             .place()
             .t(style::HEADER)
             .l(style::PAGE_PAD)
-            .size(260, style::FIELD_H);
-        style::primary(self.add_button, "add");
-        self.add_button
+            .size(TAB_WIDTH, TAB_HEIGHT);
+        self.friends_tab
+            .tapped
+            .sub(move || self.select(Tab::Friends));
+
+        self.search_tab.set_content("tab_search.svg", "Find people");
+        self.search_tab
             .place()
-            .t(style::HEADER + 1.0)
-            .l(style::PAGE_PAD + 270.0)
-            .size(80, style::BUTTON_H);
-        self.add_button.on_tap(move || self.add_friend());
+            .t(style::HEADER)
+            .l(style::PAGE_PAD + TAB_WIDTH + 8.0)
+            .size(TAB_WIDTH, TAB_HEIGHT);
+        self.search_tab.tapped.sub(move || self.select(Tab::Search));
 
         self.table
             .set_data_source(self)
@@ -136,7 +174,15 @@ impl Setup for FriendsPage {
         style::table(self.table);
         self.table
             .place()
-            .t(style::HEADER + 50.0)
+            .t(style::HEADER + TAB_CONTENT)
+            .l(style::PAGE_PAD)
+            .r(style::PAGE_PAD)
+            .b(0);
+
+        self.search.set_page(self);
+        self.search
+            .place()
+            .t(style::HEADER + TAB_CONTENT)
             .l(style::PAGE_PAD)
             .r(style::PAGE_PAD)
             .b(0);
@@ -159,9 +205,14 @@ impl FriendsPage {
         self.name_note.set_hidden(!picking);
 
         let friends = state == State::Friends;
-        self.add_field.set_hidden(!friends);
-        self.add_button.set_hidden(!friends);
-        self.table.set_hidden(!friends);
+        self.friends_tab.set_hidden(!friends);
+        self.search_tab.set_hidden(!friends);
+        self.friends_tab.set_selected(self.tab == Tab::Friends);
+        self.search_tab.set_selected(self.tab == Tab::Search);
+        self.table
+            .set_hidden(!(friends && self.tab == Tab::Friends));
+        self.search
+            .set_hidden(!(friends && self.tab == Tab::Search));
 
         // The friends state writes its own line, it knows the username.
         let text = match state {
@@ -171,6 +222,16 @@ impl FriendsPage {
             State::Friends => return,
         };
         self.subtitle.set_text(text);
+    }
+
+    fn select(mut self: Weak<Self>, tab: Tab) {
+        self.tab = tab;
+        self.show(self.state);
+
+        // A request sent from the search is a new row here.
+        if tab == Tab::Friends {
+            self.refresh();
+        }
     }
 
     /// Finds out which of the states the page is in.
@@ -231,6 +292,7 @@ impl FriendsPage {
         let outgoing = friends.outgoing.into_iter().map(Row::Outgoing);
 
         self.rows = incoming.chain(accepted).chain(outgoing).collect();
+        self.pictures = friends.pictures;
         self.table.reload_data();
     }
 
@@ -251,24 +313,6 @@ impl FriendsPage {
                 move |me| self.show_friends(&me.username.unwrap_or_default()),
             );
         });
-    }
-
-    fn add_friend(self: Weak<Self>) {
-        let name = match username::normalize(self.add_field.text()) {
-            Ok(name) => name,
-            Err(error) => return toast::error(error.to_string()),
-        };
-
-        let sent = name.clone();
-        self.call(
-            "sending the request",
-            move |client| async move { Ok(client.request_friend(&sent).await?) },
-            move |()| {
-                self.add_field.set_text("");
-                toast::success(format!("asked {name}"));
-                self.refresh();
-            },
-        );
     }
 
     /// The first button of a row.
@@ -340,8 +384,8 @@ impl FriendsPage {
 
     /// One call to the server. A failure shows as a toast. A session the
     /// server no longer knows is forgotten here too, and the page goes back
-    /// to the Google button.
-    fn call<T, Fut>(
+    /// to the Google button. The search tab calls through here as well.
+    pub(super) fn call<T, Fut>(
         self: Weak<Self>,
         title: &str,
         work: impl FnOnce(SocialClient) -> Fut + Send + 'static,
@@ -390,8 +434,11 @@ impl TableData for FriendsPage {
     }
 
     fn setup_cell(&mut self, index: usize, registry: &mut CellRegistry) -> Weak<dyn View> {
+        let row = &self.rows[index];
+        let picture = self.pictures.get(row.username()).map(String::as_str);
+
         let cell = registry.cell::<FriendCell>();
-        cell.set_row(index, weak_from_ref(self), &self.rows[index]);
+        cell.set_row(index, weak_from_ref(self), row, picture);
         cell
     }
 
@@ -404,7 +451,7 @@ struct FriendCell {
     page: Weak<FriendsPage>,
 
     #[init]
-    dot: Container,
+    avatar: Avatar,
     name: Label,
     detail: Label,
     primary: Button,
@@ -414,14 +461,17 @@ struct FriendCell {
 
 impl Setup for FriendCell {
     fn setup(self: Weak<Self>) {
-        self.dot.set_corner_radius(DOT / 2.0);
-        self.dot.place().l(6).t(15).size(DOT, DOT);
+        self.avatar
+            .place()
+            .l(6)
+            .center_y()
+            .size(avatar::SIZE, avatar::SIZE);
 
         style::body(self.name);
-        self.name.place().t(10).l(28).r(220).h(20);
+        self.name.place().t(10).l(54).r(220).h(20);
 
         style::dim(self.detail);
-        self.detail.place().t(32).l(28).r(220).h(16);
+        self.detail.place().t(32).l(54).r(220).h(16);
 
         // 16 points from the edge, the scroll bar draws over the last few.
         self.secondary.place().r(16).t(13).size(90, style::BUTTON_H);
@@ -444,36 +494,39 @@ impl Setup for FriendCell {
 }
 
 impl FriendCell {
-    fn set_row(mut self: Weak<Self>, index: usize, page: Weak<FriendsPage>, row: &Row) {
+    fn set_row(
+        mut self: Weak<Self>,
+        index: usize,
+        page: Weak<FriendsPage>,
+        row: &Row,
+        picture: Option<&str>,
+    ) {
         self.index = index;
         self.page = page;
 
+        self.avatar.show(row.username(), picture);
+        self.name.set_text(row.username());
+
+        // The dot on the picture: a request that waits for me, or in game.
         match row {
-            Row::Incoming(name) => {
-                self.name.set_text(name);
+            Row::Incoming(_) => {
                 self.detail.set_text("wants to be your friend");
-                self.dot.set_color(colors::WARN);
+                self.avatar.set_status(Some(colors::WARN));
                 style::primary(self.primary, "accept");
                 style::ghost(self.secondary, "decline");
                 self.primary.set_hidden(false);
             }
-            Row::Friend { username, in_game } => {
-                self.name.set_text(username);
+            Row::Friend { in_game, .. } => {
                 self.detail
                     .set_text(if *in_game { "in game" } else { "not in game" });
-                self.dot.set_color(if *in_game {
-                    colors::OK
-                } else {
-                    colors::PILL_BG.resolve()
-                });
+                self.avatar.set_status(in_game.then_some(colors::OK));
                 style::ghost(self.primary, "mods");
                 style::ghost(self.secondary, "unfriend");
                 self.primary.set_hidden(false);
             }
-            Row::Outgoing(name) => {
-                self.name.set_text(name);
+            Row::Outgoing(_) => {
                 self.detail.set_text("request sent, waiting for an answer");
-                self.dot.set_color(colors::PILL_BG.resolve());
+                self.avatar.set_status(None);
                 style::ghost(self.secondary, "cancel");
                 self.primary.set_hidden(true);
             }

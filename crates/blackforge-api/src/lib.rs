@@ -6,6 +6,8 @@
 
 pub mod username;
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// `GET /api/me`. A user with no username yet has just logged in for the first
@@ -29,9 +31,15 @@ pub struct Friends {
     pub incoming: Vec<String>,
     /// Requests I sent that nobody answered yet.
     pub outgoing: Vec<String>,
+    /// The link to the Google picture of everybody named above, by username.
+    /// Somebody with no picture is not in it. It is a map next to the lists
+    /// because the released apps read `incoming` and `outgoing` as plain names.
+    #[serde(default)]
+    pub pictures: BTreeMap<String, String>,
 }
 
-/// A friend never shows their email or Google name, only what they picked.
+/// A friend never shows their email or Google name, only what they picked
+/// and the picture.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Friend {
     pub username: String,
@@ -43,6 +51,38 @@ pub struct Friend {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FriendName {
     pub username: String,
+}
+
+/// One search answers with this many people at most. The app reads a full
+/// answer as "there may be more".
+pub const SEARCH_LIMIT: u8 = 20;
+
+/// The query of `GET /api/users/search`. `q` is the start of a username and
+/// follows the same rule as a whole one, so it has at least 3 characters.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Search {
+    pub q: String,
+}
+
+/// One answer of the search. Any signed in user can find any other one.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FoundUser {
+    pub username: String,
+    /// The link to the Google picture.
+    pub picture: Option<String>,
+    pub relation: Relation,
+}
+
+/// What the found user is to me.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Relation {
+    Stranger,
+    Friend,
+    /// I sent a request and wait for the answer.
+    Asked,
+    /// They sent me a request.
+    AskedMe,
 }
 
 /// `PUT /api/profile` uploads mine, `GET /api/friends/{username}/profile`
@@ -105,13 +145,38 @@ mod tests {
             }],
             incoming: vec!["bob".to_owned()],
             outgoing: Vec::new(),
+            pictures: BTreeMap::from([("anna".to_owned(), "https://p/anna.png".to_owned())]),
         };
         let json = to_string(&friends).unwrap();
         assert_eq!(
             json,
-            r#"{"friends":[{"username":"anna","in_game":true}],"incoming":["bob"],"outgoing":[]}"#
+            r#"{"friends":[{"username":"anna","in_game":true}],"incoming":["bob"],"outgoing":[],"pictures":{"anna":"https://p/anna.png"}}"#
         );
         assert_eq!(from_str::<Friends>(&json).unwrap(), friends);
+    }
+
+    /// A server older than the pictures still answers a new app.
+    #[test]
+    fn friends_without_pictures_still_read() {
+        let friends: Friends =
+            from_str(r#"{"friends":[],"incoming":["bob"],"outgoing":[]}"#).unwrap();
+        assert_eq!(friends.incoming, ["bob"]);
+        assert!(friends.pictures.is_empty());
+    }
+
+    #[test]
+    fn found_user_shape() {
+        let found = FoundUser {
+            username: "anna".to_owned(),
+            picture: None,
+            relation: Relation::AskedMe,
+        };
+        let json = to_string(&found).unwrap();
+        assert_eq!(
+            json,
+            r#"{"username":"anna","picture":null,"relation":"asked_me"}"#
+        );
+        assert_eq!(from_str::<FoundUser>(&json).unwrap(), found);
     }
 
     #[test]
