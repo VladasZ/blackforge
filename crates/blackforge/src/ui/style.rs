@@ -5,7 +5,7 @@ use hilen::{
     ui::{Button, Label, TableView, TextAlignment, TextField, ViewData},
 };
 
-use crate::ui::colors;
+use crate::ui::{colors, hover};
 
 pub const PAGE_PAD: f32 = 28.0;
 pub const HEADER: f32 = 84.0;
@@ -40,6 +40,7 @@ pub fn primary(button: Weak<Button>, text: &str) {
     button.set_text_color(colors::ON_ACCENT);
     button.set_color(colors::ACCENT);
     button.set_corner_radius(7);
+    hover::button(button, colors::ACCENT_HOVER);
 }
 
 pub fn ghost(button: Weak<Button>, text: &str) {
@@ -50,6 +51,20 @@ pub fn ghost(button: Weak<Button>, text: &str) {
     button.set_border_color(colors::BORDER);
     button.set_border_width(1);
     button.set_corner_radius(7);
+    hover::button(button, colors::NAV_HOVER_BG);
+}
+
+/// The accent as a border and text only, for an action that repeats on
+/// every row. A filled accent is left for the one main action of a screen.
+pub fn outline(button: Weak<Button>, text: &str) {
+    button.set_text(text);
+    button.set_text_size(13);
+    button.set_text_color(colors::ACCENT);
+    button.set_color(colors::CLEAR);
+    button.set_border_color(colors::ACCENT);
+    button.set_border_width(1);
+    button.set_corner_radius(7);
+    hover::button(button, colors::ACCENT_BG);
 }
 
 pub fn danger(button: Weak<Button>, text: &str) {
@@ -58,6 +73,7 @@ pub fn danger(button: Weak<Button>, text: &str) {
     button.set_text_color(colors::BAD);
     button.set_color(colors::BAD_BG);
     button.set_corner_radius(7);
+    hover::button(button, colors::BAD_HOVER_BG);
 }
 
 pub fn field(field: Weak<TextField>, placeholder: &str) {

@@ -6,7 +6,7 @@ use crate::{
     error::{Error, Result},
     ident::PackageId,
     lock::{LockedPackage, Lockfile},
-    manifest::{Manifest, VersionReq},
+    manifest::Manifest,
     thunderstore::PackageIndex,
 };
 
@@ -151,7 +151,11 @@ fn pick_version(
     lowest: &HashMap<PackageId, Version>,
     id: &PackageId,
 ) -> Result<Version> {
-    if let Some(VersionReq::Exact(pinned)) = manifest.mods.get(id).map(|spec| &spec.version) {
+    if let Some(pinned) = manifest
+        .mods
+        .get(id)
+        .and_then(|spec| spec.version.pinned_version())
+    {
         return Ok(pinned.clone());
     }
     if !unlock.frees(id)
@@ -174,7 +178,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        manifest::ModSpec,
+        manifest::{ModSpec, VersionReq},
         thunderstore::{Package, PackageVersion},
     };
 
@@ -226,12 +230,17 @@ mod tests {
         ]))
     }
 
+    /// `*` follows the newest, a version is a pin of a test server.
+    fn pin(version: &str) -> Result<VersionReq> {
+        VersionReq::from_parts(version, Some("Test".to_owned()))
+    }
+
     fn manifest(mods: &[(&str, &str)]) -> Result<Manifest> {
         let mut manifest = Manifest::new("valheim", crate::game::Target::Client);
         for (id, version) in mods {
             manifest
                 .mods
-                .insert(id.parse()?, ModSpec::new(version.parse()?));
+                .insert(id.parse()?, ModSpec::new(pin(version)?));
         }
         Ok(manifest)
     }

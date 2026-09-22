@@ -6,9 +6,9 @@ use std::{cell::Cell, collections::HashMap};
 use blackforge_core::{ident::VersionedId, progress::Event};
 use hilen::{
     BugReport,
-    gm::LossyConvert,
+    gm::{Animation, LossyConvert},
     refs::Weak,
-    ui::{Button, Container, Label, ProgressView, Setup, ViewData, view},
+    ui::{Button, Container, Label, ProgressView, Setup, UIAnimation, ViewData, ViewTooltip, view},
 };
 
 use crate::ui::{colors, icon_button::IconButton, style};
@@ -17,12 +17,15 @@ use crate::{
     updater::{self, Phase},
 };
 
-pub const HEIGHT: f32 = 34.0;
+pub const HEIGHT: f32 = 38.0;
 
 const BUTTON_HEIGHT: f32 = 26.0;
 const GAP: f32 = 8.0;
-/// Fits the longest label, "Install 0.1.10 & restart", at text size 12.
-const UPDATE_WIDTH: f32 = 160.0;
+/// Fits the longest label, "Update Blackforge to 0.1.10", at text size 13.
+const UPDATE_WIDTH: f32 = 230.0;
+const UPDATE_HEIGHT: f32 = 32.0;
+/// Seconds from dim to full and back, the pulse that says an update waits.
+const PULSE: f32 = 0.9;
 const PROGRESS_WIDTH: f32 = 200.0;
 const PROGRESS_GAP: f32 = 12.0;
 const TEXT_GAP: f32 = 40.0;
@@ -59,6 +62,8 @@ pub struct StatusBar {
     running: Vec<u64>,
     /// Received and total bytes of every download of the running operations.
     downloads: HashMap<VersionedId, (u64, u64)>,
+    /// The update button pulses once a new version is known, and stays so.
+    pulsing: bool,
 
     #[init]
     line: Container,
@@ -95,6 +100,7 @@ impl Setup for StatusBar {
         // The button always shows, like in kukareker. The engine opens the
         // dialog only with a Sentry DSN, without one a tap only logs a warning.
         self.bug.set_icon("bug.svg");
+        self.bug.set_tooltip("report a bug");
         self.bug
             .place()
             .r(style::PAGE_PAD)
@@ -102,30 +108,22 @@ impl Setup for StatusBar {
             .size(BUTTON_HEIGHT, BUTTON_HEIGHT);
         self.bug.tapped.sub(BugReport::open);
 
+        // Users missed the old small button and mixed it up with the mods
+        // update, so it shows only when a new version waits, big and pulsing.
+        // The app checks for one at start.
         self.update
             .place()
             .r(update_right)
             .center_y()
-            .size(UPDATE_WIDTH, BUTTON_HEIGHT);
-        style::ghost(self.update, "Check for updates");
-        self.update.set_text_size(12);
+            .size(UPDATE_WIDTH, UPDATE_HEIGHT);
+        style::primary(self.update, "");
+        self.update.set_text_size(13);
         self.refresh_update();
         updater::state().changed.sub(move || self.refresh_update());
         self.update.on_tap(|| {
             let state = updater::state();
-            if state.busy() {
-                return;
-            }
-            if state.has_update() {
+            if state.has_update() && !state.busy() {
                 updater::install(toast::error);
-            } else {
-                updater::check(|state| {
-                    if let Some(error) = &state.error {
-                        toast::error(error);
-                    } else if !state.has_update() {
-                        toast::info("Blackforge is up to date");
-                    }
-                });
             }
         });
 
@@ -137,15 +135,38 @@ impl StatusBar {
     fn refresh_update(self: Weak<Self>) {
         let state = updater::state();
         let label = match state.phase {
-            Phase::Idle => "Check for updates".to_owned(),
-            Phase::Checking => "Checking for updates…".to_owned(),
-            Phase::Available => format!(
-                "Install {} & restart",
+            Phase::Idle | Phase::Checking => None,
+            Phase::Available => Some(format!(
+                "Update Blackforge to {}",
                 state.version.as_deref().unwrap_or_default()
-            ),
-            Phase::Installing => format!("Installing {}%", state.progress),
+            )),
+            Phase::Installing => Some(format!("Installing {}%", state.progress)),
         };
-        self.update.set_text(label);
+        self.update.set_hidden(label.is_none());
+        if state.phase == Phase::Available && !self.pulsing {
+            self.pulse();
+        }
+        if let Some(label) = label {
+            self.update.set_text(label);
+        }
+    }
+
+    /// Started only once an update waits. A pulse that runs from launch would
+    /// keep the window drawing every frame for nothing.
+    fn pulse(mut self: Weak<Self>) {
+        self.pulsing = true;
+        self.update.add_animation(
+            UIAnimation::new(|button, value| {
+                let alpha = if updater::state().phase == Phase::Available {
+                    0.55 + 0.45 * value
+                } else {
+                    1.0
+                };
+                button.set_color(colors::ACCENT.with_alpha(alpha));
+            })
+            .animation(Animation::new(0.0, 1.0, PULSE))
+            .repeat(),
+        );
     }
 
     fn begin(mut self: Weak<Self>, title: &str) -> u64 {

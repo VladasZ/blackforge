@@ -2,7 +2,23 @@ use hilen::{refs::manage::DataManager, ui::Image};
 
 // Embed the interface images so installers and updates carry one executable.
 pub fn load() {
-    let images: [(&str, &[u8]); 20] = [
+    let images: [(&str, &[u8]); 24] = [
+        (
+            "nav_settings.svg",
+            include_bytes!("../../../assets/images/nav_settings.svg"),
+        ),
+        (
+            "trash.svg",
+            include_bytes!("../../../assets/images/trash.svg"),
+        ),
+        (
+            "open_folder.svg",
+            include_bytes!("../../../assets/images/open_folder.svg"),
+        ),
+        (
+            "check.svg",
+            include_bytes!("../../../assets/images/check.svg"),
+        ),
         ("bug.svg", include_bytes!("../../../assets/images/bug.svg")),
         (
             "nav_servers.svg",

@@ -17,7 +17,7 @@ pub struct Cli {
 pub enum Command {
     /// Add mods to the manifest and the lock, then sync
     Add {
-        /// Owner-Name, Owner-Name@1.2.3 to pin a version, or a bare Name
+        /// Owner-Name or a bare Name, always at the newest version
         #[arg(required = true)]
         mods: Vec<String>,
     },

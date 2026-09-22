@@ -8,7 +8,7 @@ use hilen::{
     ui::{ImageView, Label, Setup, ViewData, ViewTouch, view},
 };
 
-use crate::ui::{colors, style};
+use crate::ui::{colors, hover, style};
 
 const ICON: f32 = 18.0;
 
@@ -36,6 +36,8 @@ impl Setup for NavItem {
         self.touch()
             .up_inside
             .sub(self, move || self.tapped.trigger(()));
+
+        hover::clickable(self);
 
         self.enable_hover();
         self.touch()

@@ -1,9 +1,9 @@
-//! The card on top of the Mods page: the folder the game was found in, the
-//! extra arguments, the achievements switch and the run button.
+//! The game card of the Settings page: the folder the game was found in, the
+//! extra arguments and the achievements switch.
 
 use hilen::{
     refs::Weak,
-    ui::{Button, Label, Setup, Switch, TextField, ViewData, view},
+    ui::{Label, Setup, Switch, TextField, ViewData, view},
 };
 
 use crate::{
@@ -14,7 +14,6 @@ use crate::{
 pub const HEIGHT: f32 = 180.0;
 
 const PAD: f32 = 16.0;
-const RUN_W: f32 = 160.0;
 const ARGS_T: f32 = 72.0;
 const KEEP_T: f32 = ARGS_T + 20.0 + style::FIELD_H + 14.0;
 const KEEP_LABEL_L: f32 = PAD + 56.0;
@@ -25,7 +24,6 @@ pub struct GamePanel {
     #[init]
     folder_title: Label,
     folder: Label,
-    run: Button,
     args_title: Label,
     args: TextField,
     keep: Switch,
@@ -43,17 +41,7 @@ impl Setup for GamePanel {
 
         style::body(self.folder);
         self.folder.set_ellipsize_head(true);
-        self.folder
-            .place()
-            .t(PAD + 20.0)
-            .l(PAD)
-            .r(PAD + RUN_W + PAD)
-            .h(22);
-
-        style::primary(self.run, "Run game");
-        self.run.set_text_size(14);
-        self.run.place().t(PAD).r(PAD).size(RUN_W, 40);
-        self.run.on_tap(launcher::run_game);
+        self.folder.place().t(PAD + 20.0).l(PAD).r(PAD).h(22);
 
         style::dim(self.args_title);
         self.args_title

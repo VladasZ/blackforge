@@ -218,15 +218,15 @@ impl FoundCell {
         match found.relation {
             Relation::Stranger => {
                 self.detail.set_text("");
-                self.primary_action("add");
+                self.primary_action("Add");
             }
             Relation::AskedMe => {
                 self.detail.set_text("wants to be your friend");
-                self.primary_action("accept");
+                self.primary_action("Accept");
             }
             Relation::Asked => {
                 self.detail.set_text("request sent, waiting for an answer");
-                style::ghost(self.action, "cancel");
+                style::ghost(self.action, "Cancel");
             }
             Relation::Friend => {
                 self.detail.set_text("your friend");

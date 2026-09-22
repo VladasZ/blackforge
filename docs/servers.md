@@ -39,10 +39,15 @@ answer of a save is the stored row.
 
 - The list is public. The privacy page says so, keep the two in step.
 - Install changes only what the server needs. A mod the player lacks is added
-  at the server's version and pinned, a mod at another version is moved to the
-  server's version and pinned, a disabled one is switched on. Every other mod
-  of the profile stays. It is `Forge::add` per mod and one `sync` at the end,
-  so the install goes through the same path as the Browse page.
+  at the server's version and pinned for the server, a mod at another version
+  is moved to the server's version and pinned, a disabled one is switched on.
+  Every other mod of the profile stays. It is `Forge::add_for_server` per mod
+  and one `sync` at the end. A pin carries the server name, the Mods page shows
+  `pinned for Durka`.
+- A server name is unique per game, `UNIQUE (game, name)` from migration
+  `0006`, since a pin finds its server by name. For the same reason a server
+  keeps the name it was registered with, the update route refuses a new name
+  and the form hides the field when editing.
 - The versions of a registered server are the ones in the owner's lock at the
   time of the save. Editing a server after a mod update moves the server to the
   new versions, a player then sees the install button again.

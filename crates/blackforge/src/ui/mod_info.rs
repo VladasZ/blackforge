@@ -1,14 +1,19 @@
-//! The details of one Thunderstore package, with the way to add it or to pin
-//! it to a version.
+//! The details of one Thunderstore package, with the way to add it.
 
-use blackforge_core::{broken::Broken, manifest::VersionReq, thunderstore::Package};
+use blackforge_core::{
+    broken::Broken,
+    ident::{PackageId, VersionedId},
+    lock::Lockfile,
+    manifest::Manifest,
+    thunderstore::Package,
+};
 use hilen::{
     OnceEvent,
     refs::Weak,
     system::open_url,
     ui::{
-        Button, Container, Label, ModalView, Setup, Size, TextField, UIColor, VerticalAlignment,
-        ViewData, ViewSubviews, view,
+        Button, Container, Label, ModalView, Setup, Size, UIColor, VerticalAlignment, ViewData,
+        ViewSubviews, view,
     },
 };
 
@@ -17,17 +22,18 @@ use crate::{
     ui::{
         colors,
         mod_icon::ModIcon,
+        mod_pills::Note,
         mods_page::lock_change_summary,
+        names,
         pill::{self, Pill},
         style, toast,
     },
 };
 
 const WIDTH: f32 = 640.0;
-const HEIGHT: f32 = 580.0;
 const PAD: f32 = 24.0;
 const ICON: f32 = 64.0;
-/// The title and the two fact lines start right of the icon.
+/// The title and the fact lines start right of the icon.
 const TEXT_LEFT: f32 = PAD + ICON + 16.0;
 const SHOWN_NEEDS: usize = 6;
 const SHOWN_VERSIONS: usize = 10;
@@ -35,6 +41,42 @@ const PILL_GAP: f32 = 6.0;
 /// The version pills flow into 2 rows at most. What does not fit is left out,
 /// the page has the full list.
 const VERSION_ROWS: f32 = 2.0 * pill::HEIGHT + PILL_GAP;
+/// Space between two sections, and between a section title and its content.
+const GAP: f32 = 16.0;
+const SMALL_GAP: f32 = 6.0;
+const LINE: f32 = 16.0;
+/// A long description is cut here, the page has all of it.
+const MAX_DESCRIPTION: f32 = 160.0;
+const HEADER_BOTTOM: f32 = 20.0 + ICON + GAP;
+/// The status line and the button row under the last section.
+const FOOTER: f32 = GAP + LINE + GAP + style::BUTTON_H + 16.0;
+
+/// The mod as the profile has it.
+#[derive(Clone, Debug)]
+struct Installed {
+    version: String,
+    note: Note,
+}
+
+impl Installed {
+    fn of(id: &PackageId, manifest: &Manifest, lock: &Lockfile) -> Option<Self> {
+        let package = lock.packages.iter().find(|package| &package.id == id)?;
+        Some(Self {
+            version: package.version.to_string(),
+            note: Note::of(manifest.mods.get(id)),
+        })
+    }
+
+    fn line(&self) -> String {
+        let how = match &self.note {
+            Note::None => String::new(),
+            Note::Dependency => ", as a dependency".to_owned(),
+            Note::Pinned(server) => format!(", pinned for {server}"),
+            Note::Disabled => ", disabled".to_owned(),
+        };
+        format!("installed {}{how}", self.version)
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct ModDetails {
@@ -49,10 +91,11 @@ pub struct ModDetails {
     deprecated: bool,
     /// Empty when the server does not list it as broken on this game version.
     broken: String,
+    installed: Option<Installed>,
 }
 
 impl ModDetails {
-    fn of(package: &Package, broken: &Broken) -> Self {
+    fn of(package: &Package, broken: &Broken, installed: Option<Installed>) -> Self {
         let latest = package.latest();
         let newest = latest
             .map(|latest| latest.version.to_string())
@@ -62,7 +105,7 @@ impl ModDetails {
                 latest
                     .dependencies
                     .iter()
-                    .map(ToString::to_string)
+                    .map(|dependency| readable_dependency(dependency))
                     .collect()
             })
             .unwrap_or_default();
@@ -73,7 +116,6 @@ impl ModDetails {
         if shown.is_empty() {
             shown.push("nothing".to_owned());
         }
-        let needs_text = shown.join("\n");
         let versions: Vec<String> = package
             .versions
             .iter()
@@ -97,24 +139,39 @@ impl ModDetails {
             ),
             categories: package.categories.join(", "),
             description: package.description.clone(),
-            needs: needs_text,
+            needs: shown.join("\n"),
             versions,
             page_url: package.package_url.clone(),
             deprecated: package.deprecated,
             broken,
             newest,
+            installed,
         }
     }
+}
+
+/// The dependency as a reader knows it, like `BepInExPack Valheim 5.4.2350, by denikson`.
+fn readable_dependency(dependency: &VersionedId) -> String {
+    let id = dependency.id.to_string();
+    format!(
+        "{} {}, {}",
+        names::title(&id),
+        dependency.version,
+        names::author(&id)
+    )
 }
 
 #[view]
 pub struct ModInfo {
     event: OnceEvent<bool>,
     details: ModDetails,
+    /// One pill row or two, known once the pills are laid out.
+    versions_height: f32,
 
     #[init]
     icon: ModIcon,
     title: Label,
+    author: Label,
     facts: Label,
     categories: Label,
     description: Label,
@@ -124,7 +181,7 @@ pub struct ModInfo {
     versions: Container,
     deprecated: Label,
     broken: Label,
-    version: TextField,
+    status: Label,
     open_page: Button,
     close: Button,
     add: Button,
@@ -135,8 +192,9 @@ impl ModalView<ModDetails, bool> for ModInfo {
         &self.event
     }
 
+    /// The height it opens with. `setup_input` shrinks it to the content.
     fn modal_size() -> Size {
-        (WIDTH, HEIGHT).into()
+        (WIDTH, 580.0).into()
     }
 
     fn modal_scrim_color() -> UIColor {
@@ -145,7 +203,8 @@ impl ModalView<ModDetails, bool> for ModInfo {
 
     fn setup_input(mut self: Weak<Self>, details: ModDetails) {
         self.icon.show(&details.id, &details.newest);
-        self.title.set_text(&details.id);
+        self.title.set_text(names::title(&details.id));
+        self.author.set_text(names::author(&details.id));
         self.facts.set_text(&details.facts);
         self.categories.set_text(&details.categories);
         self.description.set_text(&details.description);
@@ -154,7 +213,12 @@ impl ModalView<ModDetails, bool> for ModInfo {
         self.deprecated.set_hidden(!details.deprecated);
         self.broken.set_hidden(details.broken.is_empty());
         self.broken.set_text(&details.broken);
+        if let Some(installed) = &details.installed {
+            self.status.set_text(installed.line());
+        }
         self.details = details;
+        self.stack();
+        self.refresh_actions();
     }
 }
 
@@ -167,53 +231,48 @@ impl Setup for ModInfo {
         self.title.set_text_size(20);
         self.title.set_ellipsize(true);
         self.icon.place().t(20).l(PAD).size(ICON, ICON);
+        self.title.place().t(18).l(TEXT_LEFT).r(PAD).h(26);
 
-        self.title.place().t(20).l(TEXT_LEFT).r(PAD).h(26);
+        style::dim(self.author);
+        self.author.place().t(44).l(TEXT_LEFT).r(PAD).h(LINE);
 
         style::dim(self.facts);
         self.facts.set_ellipsize(true);
-        self.facts.place().t(52).l(TEXT_LEFT).r(PAD).h(16);
+        self.facts.place().t(62).l(TEXT_LEFT).r(PAD).h(LINE);
 
         style::dim(self.categories);
         self.categories.set_ellipsize(true);
-        self.categories.place().t(72).l(TEXT_LEFT).r(PAD).h(16);
+        self.categories.place().t(80).l(TEXT_LEFT).r(PAD).h(LINE);
 
         style::body(self.description);
         self.description.set_multiline(true);
         self.description
             .set_vertical_alignment(VerticalAlignment::Top);
-        self.description.place().t(100).l(PAD).r(PAD).h(80);
 
         style::dim(self.needs_title);
         self.needs_title.set_text("needs");
-        self.needs_title.place().t(192).l(PAD).r(PAD).h(16);
 
         style::body(self.needs);
         self.needs.set_text_size(13);
         self.needs.set_multiline(true);
         self.needs.set_vertical_alignment(VerticalAlignment::Top);
-        self.needs.place().t(212).l(PAD).r(PAD).h(126);
 
         style::dim(self.versions_title);
         self.versions_title.set_text("versions");
-        self.versions_title.place().t(350).l(PAD).r(PAD).h(16);
 
         self.versions.set_color(colors::CLEAR);
-        self.versions.place().t(372).l(PAD).r(PAD).h(VERSION_ROWS);
 
         style::dim(self.deprecated);
         self.deprecated.set_text("this package is deprecated");
         self.deprecated.set_text_color(colors::BAD);
-        self.deprecated.place().t(434).l(PAD).r(PAD).h(16);
 
         style::dim(self.broken);
         self.broken.set_text_color(colors::BAD);
-        self.broken.place().t(454).l(PAD).r(PAD).h(16);
 
-        style::field(self.version, "version, empty for the newest");
-        self.version.place().b(64).l(PAD).w(280).h(style::FIELD_H);
+        style::body(self.status);
+        self.status.set_text_color(colors::OK);
 
-        style::ghost(self.open_page, "open the page");
+        style::ghost(self.open_page, "Open the page");
         self.open_page
             .place()
             .b(16)
@@ -225,16 +284,11 @@ impl Setup for ModInfo {
             }
         });
 
-        style::primary(self.add, "add");
+        style::primary(self.add, "Add");
         self.add.place().b(16).r(PAD).size(96, style::BUTTON_H);
         self.add.on_tap(move || self.add_to_profile());
 
-        style::ghost(self.close, "close");
-        self.close
-            .place()
-            .b(16)
-            .r(PAD + 104.0)
-            .size(84, style::BUTTON_H);
+        style::ghost(self.close, "Close");
         self.close.on_tap(move || self.hide_modal(false));
     }
 }
@@ -249,7 +303,14 @@ impl ModInfo {
             |forge, progress| async move {
                 let index = backend::index(forge, &progress).await?;
                 let broken = backend::broken_known(forge, &progress).await;
-                Ok(ModDetails::of(index.find(&id)?, &broken))
+                let package = index.find(&id)?;
+                let profile = backend::profile(forge, &progress).await?;
+                let installed = Installed::of(
+                    &package.id,
+                    &profile.manifest().await?,
+                    &profile.lock().await?,
+                );
+                Ok(ModDetails::of(package, &broken, installed))
             },
             move |result| match result {
                 Ok(details) => Self::show_modally_with_input(details, done),
@@ -258,9 +319,52 @@ impl ModInfo {
         );
     }
 
+    /// Puts the sections under each other at the height their text needs,
+    /// then fits the dialog around them.
+    fn stack(self: Weak<Self>) {
+        let width = WIDTH - 2.0 * PAD;
+        let mut y = HEADER_BOTTOM;
+
+        let description = self
+            .description
+            .size_for_width(width)
+            .height
+            .min(MAX_DESCRIPTION);
+        self.description.place().t(y).l(PAD).r(PAD).h(description);
+        y += description + GAP;
+
+        self.needs_title.place().t(y).l(PAD).r(PAD).h(LINE);
+        y += LINE + SMALL_GAP;
+        let needs = self.needs.size_for_width(width).height;
+        self.needs.place().t(y).l(PAD).r(PAD).h(needs);
+        y += needs + GAP;
+
+        self.versions_title.place().t(y).l(PAD).r(PAD).h(LINE);
+        y += LINE + SMALL_GAP;
+        self.versions
+            .place()
+            .t(y)
+            .l(PAD)
+            .r(PAD)
+            .h(self.versions_height);
+        y += self.versions_height;
+
+        for warning in [self.deprecated, self.broken] {
+            if !warning.is_hidden() {
+                y += SMALL_GAP;
+                warning.place().t(y).l(PAD).r(PAD).h(LINE);
+                y += LINE;
+            }
+        }
+
+        self.status.place().t(y + GAP).l(PAD).r(PAD).h(LINE);
+
+        self.place().clear().size(WIDTH, y + FOOTER).center();
+    }
+
     /// One pill per version, newest first, flowing left to right and wrapping
     /// into a second row. A pill that would start a third row is dropped.
-    fn show_versions(self: Weak<Self>, versions: &[String]) {
+    fn show_versions(mut self: Weak<Self>, versions: &[String]) {
         let room = WIDTH - 2.0 * PAD;
         let (mut x, mut y) = (0.0, 0.0);
         for version in versions {
@@ -275,30 +379,31 @@ impl ModInfo {
                 break;
             }
             chip.place().l(x).t(y).size(width, pill::HEIGHT);
+            self.versions_height = y + pill::HEIGHT;
             x += width + PILL_GAP;
         }
     }
 
+    /// An installed mod has no action, close then sits at the right edge.
+    fn refresh_actions(self: Weak<Self>) {
+        let installed = self.details.installed.is_some();
+        self.add.set_hidden(installed);
+        let action = if installed { 0.0 } else { 96.0 + 8.0 };
+        self.close
+            .place()
+            .clear()
+            .b(16)
+            .r(PAD + action)
+            .size(84, style::BUTTON_H);
+    }
+
     fn add_to_profile(self: Weak<Self>) {
         let id = self.details.id.clone();
-        let typed = self.version.text().trim().to_owned();
-        let version = if typed.is_empty() {
-            VersionReq::Latest
-        } else {
-            match typed.parse() {
-                Ok(version) => version,
-                Err(error) => {
-                    toast::error(format!("{error}"));
-                    return;
-                }
-            }
-        };
-
         backend::change(
             "adding the mod",
             |forge, progress| async move {
                 let profile = backend::profile(forge, &progress).await?;
-                let (id, change) = forge.add(&profile, &id, version, &progress).await?;
+                let (id, change) = forge.add(&profile, &id, &progress).await?;
                 forge.sync(&profile, &progress).await?;
                 Ok(format!("added {id}, {}", lock_change_summary(&change)))
             },

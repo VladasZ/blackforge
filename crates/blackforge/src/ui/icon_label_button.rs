@@ -7,7 +7,7 @@ use hilen::{
     ui::{ImageView, Label, Setup, TextAlignment, ViewData, ViewTouch, view},
 };
 
-use crate::ui::colors;
+use crate::ui::{colors, hover};
 
 const PAD: f32 = 12.0;
 const ICON: f32 = 16.0;
@@ -38,6 +38,8 @@ impl Setup for IconLabelButton {
         self.touch()
             .up_inside
             .sub(self, move || self.tapped.trigger(()));
+
+        hover::clickable(self);
 
         self.enable_hover();
         self.touch().hovered.val(self, move |hovered| {

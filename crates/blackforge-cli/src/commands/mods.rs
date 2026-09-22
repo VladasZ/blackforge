@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use blackforge_core::{
     game::{Target, VALHEIM},
-    manifest::{Manifest, VersionReq},
+    manifest::Manifest,
     thunderstore::{FRESH_ENOUGH, PackageIndex},
 };
 
@@ -10,12 +10,12 @@ use crate::{
     ui::{Ui, print_lock_change, print_sync_report, print_table},
 };
 
-/// `Owner-Name@1.2.3` pins a version, without `@` the mod follows the newest.
-fn split_version(spec: &str) -> Result<(&str, VersionReq)> {
-    Ok(match spec.split_once('@') {
-        Some((name, version)) => (name, version.parse()?),
-        None => (spec, VersionReq::Latest),
-    })
+/// A mod is added at its newest version. A pin comes only from a server.
+fn refuse_version(spec: &str) -> Result<()> {
+    if spec.contains('@') {
+        bail!("{spec}: a version pin comes only from a server install, add the mod without @");
+    }
+    Ok(())
 }
 
 pub async fn sync(context: &Context) -> Result<()> {
@@ -30,12 +30,9 @@ pub async fn sync(context: &Context) -> Result<()> {
 pub async fn add(context: &Context, mods: &[String]) -> Result<()> {
     let profile = context.profile().await?;
     for spec in mods {
-        let (name, version) = split_version(spec)?;
+        refuse_version(spec)?;
         let ui = Ui::start();
-        let result = context
-            .forge
-            .add(&profile, name, version, &ui.progress)
-            .await;
+        let result = context.forge.add(&profile, spec, &ui.progress).await;
         ui.finish().await?;
         let (id, change) = result?;
         println!("added {id}");
@@ -120,15 +117,18 @@ pub async fn list(context: &Context) -> Result<()> {
     let mut rows = Vec::new();
     for package in &lock.packages {
         let note = match manifest.mods.get(&package.id) {
-            Some(spec) if !spec.enabled => "disabled",
-            Some(spec) if spec.version != VersionReq::Latest => "pinned",
-            Some(_) => "",
-            None => "dependency",
+            Some(spec) if !spec.enabled => "disabled".to_owned(),
+            Some(spec) => spec
+                .version
+                .server()
+                .map(|server| format!("pinned for {server}"))
+                .unwrap_or_default(),
+            None => "dependency".to_owned(),
         };
         rows.push(vec![
             package.id.to_string(),
             package.version.to_string(),
-            note.to_owned(),
+            note,
         ]);
     }
     print_table(&rows);

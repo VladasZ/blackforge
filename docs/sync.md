@@ -9,11 +9,16 @@ when it next checks.
 ## What is saved
 
 The private snapshot includes chosen mods, exact locked versions and dependencies,
-enabled states, and portable values from every `.cfg` file under `BepInEx/config`.
+the server a pin is for, enabled states, and portable values from every `.cfg` file under `BepInEx/config`.
 It includes default values and settings without default comments, so it can restore
 a fresh installation. It does not upload game saves, mod archives, login tokens,
 game folders or launch arguments. Secret-looking values and absolute local paths
 are excluded. This uses separate routes and a separate table from friend sharing.
+
+A setup from an older app has pins without a server. Reading it, in the app
+and in the backend, gives them `LEGACY_PIN_SERVER`, Durka, and migration `0006`
+rewrote the stored revisions the same way. So an old app in the fleet only
+causes a harmless rewrite, never a pin without a server.
 
 ## When it runs
 

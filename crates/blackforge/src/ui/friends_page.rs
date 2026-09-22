@@ -104,7 +104,7 @@ impl Setup for FriendsPage {
         style::dim(self.subtitle);
         self.subtitle.place().t(56).l(style::PAGE_PAD).size(600, 16);
 
-        style::ghost(self.sign_out, "sign out");
+        style::ghost(self.sign_out, "Sign out");
         self.sign_out
             .place()
             .t(28)
@@ -129,7 +129,7 @@ impl Setup for FriendsPage {
             .t(style::HEADER + 8.0)
             .l(style::PAGE_PAD)
             .size(260, style::FIELD_H);
-        style::primary(self.name_save, "save");
+        style::primary(self.name_save, "Save");
         self.name_save
             .place()
             .t(style::HEADER + 9.0)
@@ -511,22 +511,22 @@ impl FriendCell {
             Row::Incoming(_) => {
                 self.detail.set_text("wants to be your friend");
                 self.avatar.set_status(Some(colors::WARN));
-                style::primary(self.primary, "accept");
-                style::ghost(self.secondary, "decline");
+                style::primary(self.primary, "Accept");
+                style::ghost(self.secondary, "Decline");
                 self.primary.set_hidden(false);
             }
             Row::Friend { in_game, .. } => {
                 self.detail
                     .set_text(if *in_game { "in game" } else { "not in game" });
                 self.avatar.set_status(in_game.then_some(colors::OK));
-                style::ghost(self.primary, "mods");
-                style::ghost(self.secondary, "unfriend");
+                style::ghost(self.primary, "Mods");
+                style::ghost(self.secondary, "Unfriend");
                 self.primary.set_hidden(false);
             }
             Row::Outgoing(_) => {
                 self.detail.set_text("request sent, waiting for an answer");
                 self.avatar.set_status(None);
-                style::ghost(self.secondary, "cancel");
+                style::ghost(self.secondary, "Cancel");
                 self.primary.set_hidden(true);
             }
         }

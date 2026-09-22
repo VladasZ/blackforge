@@ -5,9 +5,10 @@
 use blackforge_core::config::{Setting, find, list, package_of, read, write};
 use hilen::{
     Event,
+    dispatch::after,
     refs::{Weak, weak_from_ref},
     ui::{
-        CellRegistry, Container, Label, Setup, Switch, TableData, TableView, TextAlignment,
+        Button, CellRegistry, Container, Label, Setup, Switch, TableData, TableView, TextAlignment,
         TextField, VerticalAlignment, View, ViewData, ViewFrame, ViewTouch, view,
     },
 };
@@ -15,7 +16,7 @@ use hilen::{
 use crate::{
     backend,
     ui::{
-        colors,
+        colors, hover,
         mod_icon::ModIcon,
         mod_pills::{ModPills, Note},
         pill, style, toast,
@@ -47,6 +48,12 @@ const DETAIL_L: f32 = 4.0;
 /// The value field and the gap before it.
 const DETAIL_R: f32 = 310.0;
 const SETTING_PAD_B: f32 = 12.0;
+/// The dim "default: true" line under the description.
+const DEFAULT_H: f32 = 16.0;
+const DEFAULT_GAP: f32 = 4.0;
+const FIELD_W: f32 = 290.0;
+/// Seconds the saved mark stays next to a field.
+const SAVED_FOR: f32 = 2.0;
 
 /// One config file and the mod it most likely belongs to.
 #[derive(Clone, Debug)]
@@ -269,6 +276,7 @@ impl Setup for FileCard {
             .h(DESCRIPTION_H);
 
         // The wash says the card can be clicked, the click opens the file.
+        hover::clickable(self);
         self.enable_hover();
         self.touch()
             .hovered
@@ -288,7 +296,7 @@ impl FileCard {
             fit_description(self.description, &package.description);
             let pills = self
                 .pills
-                .set(&package.version, package.note, package.broken);
+                .set(&package.version, &package.note, package.broken);
             self.pills
                 .place()
                 .clear()
@@ -343,20 +351,23 @@ enum Row {
 #[derive(Clone, Debug)]
 struct SettingRow {
     setting: Setting,
-    /// The description and the default, the text under the key.
+    /// The description, the text under the key.
     detail: String,
 }
 
 impl SettingRow {
     fn new(setting: Setting) -> Self {
-        let mut detail = setting.description.join(" ");
-        if let Some(default) = &setting.default {
-            if !detail.is_empty() {
-                detail.push_str(", ");
-            }
-            detail.push_str(&format!("default {default}"));
-        }
+        let detail = setting.description.join(" ");
         Self { setting, detail }
+    }
+
+    /// The value differs from the default the file names. A setting with no
+    /// default is never marked, there is nothing to go back to.
+    fn changed(&self) -> bool {
+        self.setting
+            .default
+            .as_ref()
+            .is_some_and(|default| !default.eq_ignore_ascii_case(&self.setting.value))
     }
 }
 
@@ -364,6 +375,8 @@ impl SettingRow {
 struct ConfigSettings {
     file: String,
     rows: Vec<Row>,
+    /// The row that shows the saved mark right now.
+    saved: Option<usize>,
 
     #[init]
     table: TableView,
@@ -453,7 +466,11 @@ impl ConfigSettings {
                 Ok(format!("{section}.{key} = {value}"))
             },
             move |result: anyhow::Result<String>| match result {
-                Ok(text) => toast::success(text),
+                Ok(_) => {
+                    if self.is_ok() {
+                        self.show_saved(index);
+                    }
+                }
                 Err(error) => {
                     toast::failure(&error);
                     // The row already shows the new value, the file does not.
@@ -466,6 +483,30 @@ impl ConfigSettings {
     }
 }
 
+impl ConfigSettings {
+    /// The mark goes away by itself. A later save moves it to its own row.
+    fn show_saved(mut self: Weak<Self>, index: usize) {
+        self.saved = Some(index);
+        self.table.reload_data();
+        after(SAVED_FOR, move || {
+            if self.is_ok() && self.saved == Some(index) {
+                let mut page = self;
+                page.saved = None;
+                page.table.reload_data();
+            }
+        });
+    }
+
+    fn reset(self: Weak<Self>, index: usize) {
+        let Some(Row::Setting(row)) = self.rows.get(index) else {
+            return;
+        };
+        if let Some(default) = row.setting.default.clone() {
+            self.save(index, default);
+        }
+    }
+}
+
 impl TableData for ConfigSettings {
     fn cell_height(&self, index: usize) -> f32 {
         let Row::Setting(row) = &self.rows[index] else {
@@ -473,7 +514,14 @@ impl TableData for ConfigSettings {
         };
         self.probe.set_text(&row.detail);
         let width = self.width() - DETAIL_L - DETAIL_R;
-        let detail = self.probe.size_for_width(width).height;
+        let mut detail = if row.detail.is_empty() {
+            0.0
+        } else {
+            self.probe.size_for_width(width).height
+        };
+        if row.setting.default.is_some() {
+            detail += DEFAULT_GAP + DEFAULT_H;
+        }
         (DETAIL_T + detail + SETTING_PAD_B).max(SETTING_HEIGHT)
     }
 
@@ -490,7 +538,8 @@ impl TableData for ConfigSettings {
             }
             Row::Setting(row) => {
                 let cell = registry.cell::<SettingCell>();
-                cell.set_setting(index, weak_from_ref(self), row);
+                let saved = self.saved == Some(index);
+                cell.set_setting(index, weak_from_ref(self), row, saved, self.width());
                 cell
             }
         }
@@ -520,7 +569,11 @@ struct SettingCell {
 
     #[init]
     key: Label,
+    changed: Container,
+    reset: Button,
     detail: Label,
+    default: Label,
+    saved: Label,
     value: TextField,
     toggle: Switch,
     line: Container,
@@ -530,25 +583,44 @@ impl Setup for SettingCell {
     fn setup(self: Weak<Self>) {
         style::body(self.key);
         self.key.set_ellipsize(true);
-        self.key.place().t(10).l(DETAIL_L).r(DETAIL_R).h(20);
+
+        // An orange dot after the key says the value is not the default.
+        self.changed.set_color(colors::ACCENT);
+        self.changed.set_corner_radius(4);
+
+        style::ghost(self.reset, "Reset");
+        self.reset.set_border_width(0);
+        self.reset.set_text_size(12);
+        self.reset.set_text_color(colors::ACCENT);
+        self.reset.on_tap(move || {
+            if self.page.is_ok() {
+                self.page.reset(self.index);
+            }
+        });
 
         // The whole text, wrapped. The row is as tall as the text needs.
         style::dim(self.detail);
         self.detail.set_multiline(true);
         self.detail.set_vertical_alignment(VerticalAlignment::Top);
-        self.detail
+
+        style::dim(self.default);
+
+        style::dim(self.saved);
+        self.saved.set_text("saved");
+        self.saved.set_text_color(colors::OK);
+        self.saved.set_alignment(TextAlignment::Right);
+        self.saved
             .place()
-            .t(DETAIL_T)
-            .l(DETAIL_L)
-            .r(DETAIL_R)
-            .b(SETTING_PAD_B);
+            .r(16.0 + FIELD_W + 8.0)
+            .center_y()
+            .size(50, 16);
 
         style::field(self.value, "");
         self.value
             .place()
             .r(16)
             .center_y()
-            .size(290, style::FIELD_H);
+            .size(FIELD_W, style::FIELD_H);
         self.value.editing_ended.val(move |text| {
             if self.page.is_ok() {
                 self.page.save(self.index, text);
@@ -573,11 +645,72 @@ impl SettingCell {
         index: usize,
         page: Weak<ConfigSettings>,
         row: &SettingRow,
+        saved: bool,
+        width: f32,
     ) {
         self.index = index;
         self.page = page;
+
+        // The key is as wide as its text, so the dot and the reset link sit
+        // right after it.
         self.key.set_text(&row.setting.key);
+        let key = self
+            .key
+            .content_size()
+            .width
+            .min(width - DETAIL_L - DETAIL_R - 90.0);
+        self.key.place().clear().t(10).l(DETAIL_L).w(key).h(20);
+        let changed = row.changed();
+        self.changed.set_hidden(!changed);
+        self.changed
+            .place()
+            .clear()
+            .t(16)
+            .l(DETAIL_L + key + 8.0)
+            .size(8, 8);
+        self.reset.set_hidden(!changed);
+        self.reset
+            .place()
+            .clear()
+            .t(8)
+            .l(DETAIL_L + key + 22.0)
+            .size(56, 24);
+
+        let mut y = DETAIL_T;
         self.detail.set_text(&row.detail);
+        self.detail.set_hidden(row.detail.is_empty());
+        let detail = if row.detail.is_empty() {
+            0.0
+        } else {
+            self.detail
+                .size_for_width(width - DETAIL_L - DETAIL_R)
+                .height
+        };
+        self.detail
+            .place()
+            .clear()
+            .t(y)
+            .l(DETAIL_L)
+            .r(DETAIL_R)
+            .h(detail);
+        y += detail;
+
+        self.default.set_hidden(row.setting.default.is_none());
+        if let Some(default) = &row.setting.default {
+            if detail > 0.0 {
+                y += DEFAULT_GAP;
+            }
+            self.default.set_text(format!("default: {default}"));
+            self.default
+                .place()
+                .clear()
+                .t(y)
+                .l(DETAIL_L)
+                .r(DETAIL_R)
+                .h(DEFAULT_H);
+        }
+
+        self.saved.set_hidden(!saved);
 
         let on = row.setting.as_bool();
         self.value.set_hidden(on.is_some());

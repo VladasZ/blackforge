@@ -42,13 +42,14 @@ pub async fn snapshot(profile: &Profile) -> Result<Snapshot> {
             package.id.to_string(),
             Mod {
                 version: package.version.to_string(),
-                requested: spec.map(|spec| spec.version.to_string()),
+                requested: spec.map(|spec| spec.version.version_text()),
                 enabled: manifest.is_enabled(&package.id),
                 dependencies: package
                     .dependencies
                     .iter()
                     .map(ToString::to_string)
                     .collect(),
+                server: spec.and_then(|spec| spec.version.server().map(ToOwned::to_owned)),
             },
         );
     }
@@ -115,8 +116,11 @@ pub(super) fn manifests(setup: &Setup) -> Result<(Manifest, Lockfile)> {
         let id: PackageId = id.parse()?;
         let version = parse_version(&value.version)?;
         if let Some(requested) = &value.requested {
-            let requested: VersionReq = requested.parse()?;
-            if matches!(&requested, VersionReq::Exact(pin) if pin != &version) {
+            let requested = VersionReq::from_parts(requested, value.server.clone())?;
+            if requested
+                .pinned_version()
+                .is_some_and(|pin| pin != &version)
+            {
                 return Err(Error::Invalid(format!(
                     "{id} does not match its pinned version"
                 )));

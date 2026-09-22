@@ -2,31 +2,30 @@
 
 use std::{cmp::Reverse, collections::HashSet};
 
-use blackforge_core::manifest::VersionReq;
 use hilen::{
     refs::{Weak, weak_from_ref},
     system::open_url,
     ui::{
         Button, CellRegistry, Container, DropDown, Label, Setup, TableData, TableView,
-        TextAlignment, TextField, ToLabel, UIColor, VerticalAlignment, View, ViewData, ViewTouch,
-        view,
+        TextAlignment, TextField, ToLabel, VerticalAlignment, View, ViewData, ViewTooltip, view,
     },
 };
 
 use crate::{
     backend,
     ui::{
-        colors,
+        colors, hover,
         icon_button::{self, IconButton},
         mod_icon::ModIcon,
         mod_info::ModInfo,
         mods_page::lock_change_summary,
+        names,
         pill::{self, Pill, compact},
         style, toast,
     },
 };
 
-const ROW_HEIGHT: f32 = 88.0;
+const ROW_HEIGHT: f32 = 104.0;
 const SEARCH_WIDTH: f32 = 340.0;
 const SORT_WIDTH: f32 = 150.0;
 const ADD_WIDTH: f32 = 84.0;
@@ -244,9 +243,7 @@ impl BrowsePage {
             "adding the mod",
             |forge, progress| async move {
                 let profile = backend::profile(forge, &progress).await?;
-                let (id, change) = forge
-                    .add(&profile, &id, VersionReq::Latest, &progress)
-                    .await?;
+                let (id, change) = forge.add(&profile, &id, &progress).await?;
                 forge.sync(&profile, &progress).await?;
                 Ok(format!("added {id}, {}", lock_change_summary(&change)))
             },
@@ -298,6 +295,7 @@ struct HitCell {
     #[init]
     icon: ModIcon,
     name: Label,
+    author: Label,
     description: Label,
     version: Pill,
     downloads: Pill,
@@ -316,6 +314,15 @@ impl Setup for HitCell {
         style::body(self.name);
         self.name.set_ellipsize(true);
 
+        style::dim(self.author);
+        self.author.set_ellipsize(true);
+        self.author
+            .place()
+            .t(TOP_LINE + 24.0)
+            .l(TEXT_LEFT)
+            .r(16)
+            .h(16);
+
         self.deprecated.warn();
         self.broken.warn();
 
@@ -328,7 +335,7 @@ impl Setup for HitCell {
             .set_vertical_alignment(VerticalAlignment::Top);
         self.description
             .place()
-            .t(TOP_LINE + 30.0)
+            .t(TOP_LINE + 46.0)
             .l(TEXT_LEFT)
             .r(16)
             .h(36);
@@ -346,6 +353,7 @@ impl Setup for HitCell {
             .size(ADD_WIDTH, 28);
 
         self.open_page.set_icon("open_page.svg");
+        self.open_page.set_tooltip("open on Thunderstore");
         self.open_page
             .place()
             .r(PAGE_RIGHT)
@@ -357,7 +365,7 @@ impl Setup for HitCell {
             }
         });
 
-        style::primary(self.add, "add");
+        style::outline(self.add, "Add");
         self.add.place().r(16).t(TOP_LINE - 2.0).size(ADD_WIDTH, 28);
         self.add.on_tap(move || {
             if self.page.is_ok() {
@@ -366,14 +374,7 @@ impl Setup for HitCell {
         });
 
         // The wash says the row can be clicked, the click opens the details.
-        self.enable_hover();
-        self.touch().hovered.val(self, move |hovered| {
-            self.set_color(if hovered {
-                colors::NAV_HOVER_BG.into()
-            } else {
-                UIColor::from(colors::CLEAR)
-            });
-        });
+        hover::row(self);
 
         self.line.set_color(colors::BORDER);
         self.line.place().l(0).r(0).b(0).h(1);
@@ -385,7 +386,8 @@ impl HitCell {
         self.index = index;
         self.page = page;
         self.icon.show(&hit.id, &hit.version);
-        self.name.set_text(&hit.id);
+        self.name.set_text(names::title(&hit.id));
+        self.author.set_text(names::author(&hit.id));
         self.description.set_text(&hit.description);
 
         // The pills sit right to left, each as wide as its text.

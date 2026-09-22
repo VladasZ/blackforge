@@ -11,7 +11,11 @@ normal. The game is found through `Steam` by itself, see `game/locate.rs`.
 
 ## profiles/<name>
 
-`blackforge.toml` is the mods the user asked for, with a version rule per mod.
+`blackforge.toml` is the mods the user asked for. A mod follows the newest
+version, written `"*"`, or is pinned for a server, written
+`{ version = "1.3.1", server = "Durka" }`. A pin always names its server, and
+only a server install makes one. An older file has pins with no server, they
+are all Durka pins and read as such.
 `blackforge.lock` is the exact version of every package, dependencies included.
 `installed.json` is what is unpacked in the profile and which files belong to
 which package. When all 3 agree, the profile is complete. A package that

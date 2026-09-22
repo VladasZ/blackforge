@@ -13,7 +13,7 @@ use crate::{
     ident::{PackageId, VersionedId},
     install::{SyncReport, ZipCache, purge_gone, sync_tree, wanted},
     lock::{LockedPackage, Lockfile},
-    manifest::{Manifest, ModSpec, VersionReq},
+    manifest::{Manifest, ModSpec, Pin, VersionReq},
     paths::DataDir,
     profile::{Profile, ProfileStore, game_dir_key},
     progress::Progress,
@@ -164,7 +164,34 @@ impl Forge {
         }
     }
 
+    /// Adds a mod that follows the newest version. There is no pin by hand,
+    /// a pin comes only from a server, see `add_for_server`.
     pub async fn add(
+        &self,
+        profile: &Profile,
+        query: &str,
+        progress: &Progress,
+    ) -> Result<(PackageId, LockChange)> {
+        self.put(profile, query, VersionReq::Latest, progress).await
+    }
+
+    /// Pins a mod to the version a server needs, with the server's name.
+    pub async fn add_for_server(
+        &self,
+        profile: &Profile,
+        query: &str,
+        version: Version,
+        server: &str,
+        progress: &Progress,
+    ) -> Result<(PackageId, LockChange)> {
+        let pin = VersionReq::Pinned(Pin {
+            version,
+            server: server.to_owned(),
+        });
+        self.put(profile, query, pin, progress).await
+    }
+
+    async fn put(
         &self,
         profile: &Profile,
         query: &str,
@@ -233,13 +260,10 @@ impl Forge {
                 continue;
             };
             if latest.version > package.version {
-                let pinned = matches!(
-                    manifest.mods.get(&package.id),
-                    Some(ModSpec {
-                        version: VersionReq::Exact(_),
-                        ..
-                    })
-                );
+                let pinned = manifest
+                    .mods
+                    .get(&package.id)
+                    .is_some_and(|spec| spec.version.pinned_version().is_some());
                 outdated.push(Outdated {
                     id: package.id,
                     locked: package.version,

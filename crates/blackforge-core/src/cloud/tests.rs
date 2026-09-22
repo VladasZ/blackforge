@@ -44,6 +44,7 @@ fn add_mod(setup: &mut Setup, id: &str, version: &str) {
             requested: Some("*".to_owned()),
             enabled: true,
             dependencies: Vec::new(),
+            server: None,
         },
     );
 }

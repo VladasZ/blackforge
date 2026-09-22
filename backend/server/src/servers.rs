@@ -84,12 +84,11 @@ fn checked(body: &SaveServer) -> Result<(String, String, String), AppError> {
     Ok((name, game.to_owned(), mods))
 }
 
-/// Two servers of one owner cannot share a name, the list would show two
-/// equal rows and the owner could not tell them apart.
+/// A name belongs to one server of a game, a pin names its server.
 fn taken(error: sqlx::Error, name: &str) -> AppError {
     match &error {
         sqlx::Error::Database(database) if database.is_unique_violation() => {
-            AppError::BadRequest(format!("you already registered a server called {name}"))
+            AppError::BadRequest(format!("a server called {name} already exists"))
         }
         _ => error.into(),
     }
@@ -123,21 +122,31 @@ async fn update(
 ) -> Result<Json<Server>, AppError> {
     let id = server_id(&id)?;
     let (name, game, mods) = checked(&body)?;
-    let done = sqlx::query(
-        r"UPDATE servers SET name = $3, game = $4, mods = $5, updated_at = now()
+    let current: Option<(String,)> =
+        sqlx::query_as("SELECT name FROM servers WHERE id = $1 AND owner_id = $2")
+            .bind(id)
+            .bind(user.id)
+            .fetch_optional(&db)
+            .await?;
+    let Some((current,)) = current else {
+        return Err(AppError::NotFound);
+    };
+    // Players' pins name the server, a new name would leave them behind.
+    if current != name {
+        return Err(AppError::BadRequest(
+            "a server keeps the name it was registered with".to_owned(),
+        ));
+    }
+    sqlx::query(
+        r"UPDATE servers SET game = $3, mods = $4, updated_at = now()
 WHERE id = $1 AND owner_id = $2",
     )
     .bind(id)
     .bind(user.id)
-    .bind(&name)
     .bind(&game)
     .bind(&mods)
     .execute(&db)
-    .await
-    .map_err(|error| taken(error, &name))?;
-    if done.rows_affected() == 0 {
-        return Err(AppError::NotFound);
-    }
+    .await?;
     Ok(Json(one(&db, id).await?))
 }
 

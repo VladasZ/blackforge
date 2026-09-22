@@ -12,7 +12,7 @@ use crate::{
     ident::{PackageId, parse_version},
     install::SyncReport,
     lock::Lockfile,
-    manifest::{Manifest, VersionReq},
+    manifest::Manifest,
     profile::Profile,
     progress::Progress,
     social::client::SERVER,
@@ -91,6 +91,7 @@ impl Forge {
     pub async fn install_server(
         &self,
         profile: &Profile,
+        server: &str,
         required: &[ServerMod],
         progress: &Progress,
     ) -> Result<ServerInstall> {
@@ -98,8 +99,9 @@ impl Forge {
         let lock = profile.lock().await?;
         let needs = needs(&manifest, &lock, required);
         for server_mod in needs.to_add() {
-            let version = VersionReq::Exact(parse_version(&server_mod.version)?);
-            self.add(profile, &server_mod.id, version, progress).await?;
+            let version = parse_version(&server_mod.version)?;
+            self.add_for_server(profile, &server_mod.id, version, server, progress)
+                .await?;
         }
         // A mod that was added keeps its enabled flag, so a disabled one at
         // the wrong version needs the switch too. The fresh manifest knows.

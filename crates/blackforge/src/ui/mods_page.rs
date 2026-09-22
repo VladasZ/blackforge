@@ -1,5 +1,4 @@
-//! The game card with the run button, and under it the mods of the active
-//! profile: enable, disable, remove and update.
+//! The mods of the active profile: enable, disable, remove and update.
 
 use std::collections::HashMap;
 
@@ -8,34 +7,36 @@ use hilen::{
     refs::{Weak, weak_from_ref},
     ui::{
         Button, CellRegistry, Container, Label, Question, Setup, Switch, TableData, TableView,
-        TextAlignment, View, ViewData, view,
+        TextAlignment, View, ViewData, ViewTooltip, view,
     },
 };
 
 use crate::{
     backend,
     ui::{
-        colors,
-        game_panel::{self, GamePanel},
+        colors, hover,
+        icon_button::{self, IconButton},
         mod_icon::ModIcon,
         mod_info::ModInfo,
         mod_pills::{ModPills, Note},
-        pill, style,
+        names, pill, style,
         sync_panel::{self, SyncPanel},
         toast,
     },
 };
 
-const GAME_T: f32 = 24.0;
 /// The mods header and the table sit this far under the top of the page.
-const MODS_T: f32 = GAME_T + game_panel::HEIGHT;
-const ROW_HEIGHT: f32 = 64.0;
+const MODS_T: f32 = 0.0;
+const ROW_HEIGHT: f32 = 84.0;
 /// The table starts this far under the cloud sync line.
 const LIST_GAP: f32 = 12.0;
-const PILLS_T: f32 = 32.0;
+const AUTHOR_T: f32 = 28.0;
+const PILLS_T: f32 = 50.0;
 const ICON: f32 = 36.0;
 /// The name and the detail start right of the icon.
 const TEXT_LEFT: f32 = 4.0 + ICON + 12.0;
+/// The update button and the newer note end left of the switch.
+const RIGHT_OF_SWITCH: f32 = 16.0 + icon_button::SIZE + 16.0 + 44.0 + 16.0;
 
 #[derive(Clone, Debug)]
 struct ModRow {
@@ -48,6 +49,15 @@ struct ModRow {
     /// dependency leaves by itself when nothing needs it.
     direct: bool,
     enabled: bool,
+}
+
+/// A newer version of a locked mod.
+#[derive(Clone, Debug)]
+struct Newer {
+    version: String,
+    /// Held at its version, so update all leaves it and the row offers no
+    /// update of its own.
+    pinned: bool,
 }
 
 pub fn lock_change_summary(change: &LockChange) -> String {
@@ -82,10 +92,11 @@ pub fn sync_summary(report: &SyncReport) -> String {
 pub struct ModsPage {
     rows: Vec<ModRow>,
     /// The newest version of every locked mod that has one, by id.
-    newest: HashMap<String, String>,
+    newest: HashMap<String, Newer>,
+    /// A check for updates ran, so `newest` is complete.
+    checked: bool,
 
     #[init]
-    game: GamePanel,
     title: Label,
     subtitle: Label,
     check: Button,
@@ -97,13 +108,6 @@ pub struct ModsPage {
 
 impl Setup for ModsPage {
     fn setup(self: Weak<Self>) {
-        self.game
-            .place()
-            .t(GAME_T)
-            .l(style::PAGE_PAD)
-            .r(style::PAGE_PAD)
-            .h(game_panel::HEIGHT);
-
         style::title(self.title, "Mods");
         self.title
             .place()
@@ -118,7 +122,7 @@ impl Setup for ModsPage {
             .l(style::PAGE_PAD)
             .size(500, 16);
 
-        style::ghost(self.update, "update all");
+        style::ghost(self.update, "Update all");
         self.update
             .place()
             .t(MODS_T + 28.0)
@@ -126,7 +130,7 @@ impl Setup for ModsPage {
             .size(100, style::BUTTON_H);
         self.update.on_tap(move || self.update_all());
 
-        style::ghost(self.check, "check for updates");
+        style::ghost(self.check, "Check for updates");
         self.check
             .place()
             .t(MODS_T + 28.0)
@@ -229,11 +233,59 @@ impl ModsPage {
             move |result: anyhow::Result<LockChange>| {
                 if result.is_ok() && self.is_ok() {
                     let mut page = self;
-                    page.newest.clear();
+                    page.newest.retain(|_, newer| newer.pinned);
+                    page.refresh_update_button();
                 }
                 self.report(result.map(|change| lock_change_summary(&change)));
             },
         );
+    }
+
+    /// Moves one mod to its newest version, the others stay where they are.
+    fn update_mod(self: Weak<Self>, index: usize) {
+        let Some(row) = self.rows.get(index) else {
+            return;
+        };
+        let id = row.id.clone();
+        backend::change(
+            "updating the mod",
+            move |forge, progress| async move {
+                let profile = backend::profile(forge, &progress).await?;
+                let change = forge
+                    .update(&profile, std::slice::from_ref(&id), &progress)
+                    .await?;
+                forge.sync(&profile, &progress).await?;
+                Ok((id, change))
+            },
+            move |result: anyhow::Result<(String, LockChange)>| {
+                if let Ok((id, _)) = &result
+                    && self.is_ok()
+                {
+                    let mut page = self;
+                    page.newest.remove(id);
+                    page.refresh_update_button();
+                }
+                self.report(result.map(|(_, change)| lock_change_summary(&change)));
+            },
+        );
+    }
+
+    /// Update all names how many mods it moves once a check ran, and is off
+    /// when there is nothing to move. Pinned mods do not count, it leaves them.
+    fn refresh_update_button(self: Weak<Self>) {
+        let mut update = self.update;
+        if !self.checked {
+            update.set_text("Update all");
+            update.set_enabled(true);
+            return;
+        }
+        let count = self.newest.values().filter(|newer| !newer.pinned).count();
+        if count == 0 {
+            update.set_text("Update all");
+        } else {
+            update.set_text(format!("Update {count}"));
+        }
+        update.set_enabled(count > 0);
     }
 
     fn check_updates(mut self: Weak<Self>) {
@@ -258,8 +310,18 @@ impl ModsPage {
                         }
                         self.newest = outdated
                             .into_iter()
-                            .map(|entry| (entry.id.to_string(), entry.latest.to_string()))
+                            .map(|entry| {
+                                (
+                                    entry.id.to_string(),
+                                    Newer {
+                                        version: entry.latest.to_string(),
+                                        pinned: entry.pinned,
+                                    },
+                                )
+                            })
                             .collect();
+                        self.checked = true;
+                        self.refresh_update_button();
                         self.table.reload_data();
                     }
                     Err(error) => toast::failure(&error),
@@ -273,7 +335,7 @@ impl ModsPage {
             return;
         };
         let id = row.id.clone();
-        Question::ask(format!("Remove {id}?")).on_yes(move || {
+        Question::ask(format!("Remove {}?", names::title(&id))).on_yes(move || {
             backend::change(
                 "removing the mod",
                 |forge, progress| async move {
@@ -360,10 +422,12 @@ struct ModCell {
     #[init]
     icon: ModIcon,
     name: Label,
+    author: Label,
     pills: ModPills,
     newer: Label,
+    update: Button,
     enabled: Switch,
-    remove: Button,
+    remove: IconButton,
     line: Container,
 }
 
@@ -375,25 +439,59 @@ impl Setup for ModCell {
         self.name.set_ellipsize(true);
         self.name.place().t(8).l(TEXT_LEFT).r(330).h(20);
 
+        style::dim(self.author);
+        self.author.set_ellipsize(true);
+        self.author.place().t(AUTHOR_T).l(TEXT_LEFT).r(330).h(16);
+
+        // A pinned mod only says a newer version exists, updating it would
+        // break the match with its server.
         style::dim(self.newer);
         self.newer.set_text_color(colors::ACCENT);
         self.newer.set_alignment(TextAlignment::Right);
-        self.newer.place().r(182).center_y().size(150, 16);
+        self.newer
+            .place()
+            .r(RIGHT_OF_SWITCH)
+            .center_y()
+            .size(150, 16);
 
-        self.enabled.place().r(116).center_y().size(44, 24);
+        style::ghost(self.update, "");
+        self.update
+            .place()
+            .r(RIGHT_OF_SWITCH)
+            .center_y()
+            .size(130, style::BUTTON_H);
+        self.update.on_tap(move || {
+            if self.page.is_ok() {
+                self.page.update_mod(self.index);
+            }
+        });
+
+        self.enabled
+            .place()
+            .r(16.0 + icon_button::SIZE + 16.0)
+            .center_y()
+            .size(44, 24);
         self.enabled.on_change(move |on| {
             if self.page.is_ok() {
                 self.page.set_mod_enabled(self.index, on);
             }
         });
 
-        style::danger(self.remove, "remove");
-        self.remove.place().r(16).center_y().size(84, 28);
-        self.remove.on_tap(move || {
+        self.remove.set_icon("trash.svg");
+        self.remove.set_tooltip("Remove");
+        self.remove
+            .place()
+            .r(16)
+            .center_y()
+            .size(icon_button::SIZE, icon_button::SIZE);
+        self.remove.tapped.sub(move || {
             if self.page.is_ok() {
                 self.page.remove_mod(self.index);
             }
         });
+
+        // The wash says the row can be clicked, the click opens the details.
+        hover::row(self);
 
         self.line.set_color(colors::BORDER);
         self.line.place().l(0).r(0).b(0).h(1);
@@ -406,18 +504,19 @@ impl ModCell {
         index: usize,
         page: Weak<ModsPage>,
         row: &ModRow,
-        newest: Option<&String>,
+        newest: Option<&Newer>,
     ) {
         self.index = index;
         self.page = page;
 
         self.icon.show(&row.id, &row.version);
-        self.name.set_text(&row.id);
+        self.name.set_text(names::title(&row.id));
         self.name
             .set_text_color(if row.enabled { colors::FG } else { colors::DIM });
+        self.author.set_text(names::author(&row.id));
 
         // The pills sit under the name, as wide as their text.
-        let pills = self.pills.set(&row.version, row.note, row.broken);
+        let pills = self.pills.set(&row.version, &row.note, row.broken);
         self.pills
             .place()
             .clear()
@@ -425,9 +524,15 @@ impl ModCell {
             .t(PILLS_T)
             .size(pills, pill::HEIGHT);
 
-        self.newer.set_hidden(newest.is_none());
-        if let Some(newest) = newest {
-            self.newer.set_text(format!("{newest} is out"));
+        let pinned = newest.filter(|newer| newer.pinned);
+        let movable = newest.filter(|newer| !newer.pinned);
+        self.newer.set_hidden(pinned.is_none());
+        if let Some(newer) = pinned {
+            self.newer.set_text(format!("{} is out", newer.version));
+        }
+        self.update.set_hidden(movable.is_none());
+        if let Some(newer) = movable {
+            self.update.set_text(format!("Update to {}", newer.version));
         }
 
         self.enabled.set_hidden(!row.direct);

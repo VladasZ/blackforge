@@ -2,6 +2,7 @@
 //! file, and a plain folder for a rented or Docker server.
 
 use hilen::{
+    Event,
     dispatch::{on_main, spawn},
     filesystem::Paths,
     refs::Weak,
@@ -17,6 +18,9 @@ use crate::{
 
 const PAD: f32 = 20.0;
 const GAP: f32 = 16.0;
+/// The code card before and after a code exists. The code line only takes
+/// room once there is a code to show.
+const CODE_SHORT: f32 = 116.0;
 const CODE_HEIGHT: f32 = 156.0;
 const FILE_HEIGHT: f32 = 116.0;
 const DEPLOY_HEIGHT: f32 = 160.0;
@@ -53,32 +57,40 @@ impl Setup for SharePage {
             .set_text("give your mods to a friend or to a server");
         self.subtitle.place().t(56).l(style::PAGE_PAD).size(500, 16);
 
-        let mut y = style::HEADER;
-        self.code
-            .place()
-            .t(y)
-            .l(style::PAGE_PAD)
-            .r(style::PAGE_PAD)
-            .h(CODE_HEIGHT);
-        y += CODE_HEIGHT + GAP;
+        self.place_code(CODE_SHORT);
+        self.code.grown.sub(move || self.place_code(CODE_HEIGHT));
         self.file
             .place()
-            .t(y)
+            .below(self.code, GAP)
             .l(style::PAGE_PAD)
             .r(style::PAGE_PAD)
             .h(FILE_HEIGHT);
-        y += FILE_HEIGHT + GAP;
         self.deploy
             .place()
-            .t(y)
+            .below(self.file, GAP)
             .l(style::PAGE_PAD)
             .r(style::PAGE_PAD)
             .h(DEPLOY_HEIGHT);
     }
 }
 
+impl SharePage {
+    fn place_code(self: Weak<Self>, height: f32) {
+        self.code
+            .place()
+            .clear()
+            .t(style::HEADER)
+            .l(style::PAGE_PAD)
+            .r(style::PAGE_PAD)
+            .h(height);
+    }
+}
+
 #[view]
 struct CodeCard {
+    /// A code arrived, the card needs its tall size.
+    grown: Event,
+
     #[init]
     title: Label,
     text: Label,
@@ -96,7 +108,7 @@ impl Setup for CodeCard {
             "the code works in r2modman, Gale and blackforge, and it expires within hours",
         );
 
-        style::primary(self.create, "create a code");
+        style::primary(self.create, "Create a code");
         self.create.place().b(16).l(PAD).size(130, style::BUTTON_H);
         self.create.on_tap(move || self.create_code());
 
@@ -104,7 +116,7 @@ impl Setup for CodeCard {
         self.code.set_text_size(18);
         self.code.place().t(70).l(PAD).r(PAD).h(26);
 
-        style::ghost(self.copy, "copy");
+        style::ghost(self.copy, "Copy");
         self.copy.set_hidden(true);
         self.copy
             .place()
@@ -135,6 +147,7 @@ impl CodeCard {
                     Ok(code) => {
                         self.code.set_text(code);
                         self.copy.set_hidden(false);
+                        self.grown.trigger(());
                     }
                     Err(error) => toast::failure(&error),
                 }
@@ -160,7 +173,7 @@ impl Setup for FileCard {
             "writes default.r2z into the folder you pick, for a mod set too large for a code",
         );
 
-        style::primary(self.export, "pick a folder");
+        style::ghost(self.export, "Export file");
         self.export.place().b(16).l(PAD).size(130, style::BUTTON_H);
         self.export.on_tap(|| {
             spawn(async {
@@ -220,8 +233,8 @@ impl Setup for DeployCard {
             .r(PAD)
             .h(20);
 
-        style::primary(self.deploy, "pick a folder");
-        self.deploy.place().b(16).l(PAD).size(130, style::BUTTON_H);
+        style::ghost(self.deploy, "Deploy to folder");
+        self.deploy.place().b(16).l(PAD).size(150, style::BUTTON_H);
         self.deploy.on_tap(move || {
             let overwrite_configs = self.overwrite.on();
             spawn(async move {

@@ -74,7 +74,7 @@ impl Setup for HistoryModal {
             .register_cell::<HistoryCell>();
         self.table.place().t(PAD + 60.0).l(PAD).r(PAD).b(PAD + 48.0);
 
-        style::ghost(self.close, "close");
+        style::ghost(self.close, "Close");
         self.close.place().r(PAD).b(PAD).size(90, style::BUTTON_H);
         self.close.on_tap(move || self.hide_modal(false));
 
@@ -197,7 +197,7 @@ impl Setup for HistoryCell {
         self.current.set_text("installed now");
         self.current.place().r(16).t(20).size(RESTORE_W, 16);
 
-        style::ghost(self.restore, "restore");
+        style::ghost(self.restore, "Restore");
         self.restore
             .place()
             .r(16)

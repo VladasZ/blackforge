@@ -7,7 +7,7 @@ use hilen::{
     ui::{ImageView, Setup, ViewData, ViewTouch, view},
 };
 
-use crate::ui::colors;
+use crate::ui::{colors, hover};
 
 pub const SIZE: f32 = 28.0;
 
@@ -33,6 +33,8 @@ impl Setup for IconButton {
         self.touch()
             .up_inside
             .sub(self, move || self.tapped.trigger(()));
+
+        hover::clickable(self);
 
         self.enable_hover();
         self.touch().hovered.val(self, move |hovered| {

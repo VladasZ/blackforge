@@ -68,7 +68,9 @@ impl ModalView<Option<Server>, bool> for ServerModal {
     fn setup_input(mut self: Weak<Self>, server: Option<Server>) {
         if let Some(server) = &server {
             self.title.set_text(format!("Edit {}", server.name));
+            // The name stays, pins of players name the server. The title shows it.
             self.name.set_text(&server.name);
+            self.name.set_hidden(true);
             self.editing = Some(server.id.clone());
         }
         self.load(server);
@@ -111,7 +113,7 @@ impl Setup for ServerModal {
             .r(PAD)
             .b(PAD + 48.0);
 
-        style::ghost(self.cancel, "cancel");
+        style::ghost(self.cancel, "Cancel");
         self.cancel
             .place()
             .r(PAD + 100.0)
@@ -119,7 +121,7 @@ impl Setup for ServerModal {
             .size(90, style::BUTTON_H);
         self.cancel.on_tap(move || self.hide_modal(false));
 
-        style::primary(self.save, "save");
+        style::primary(self.save, "Save");
         self.save.place().r(PAD).b(PAD).size(90, style::BUTTON_H);
         self.save.on_tap(move || self.save());
     }

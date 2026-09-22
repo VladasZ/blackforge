@@ -1,10 +1,6 @@
-use std::{
-    collections::BTreeMap,
-    fmt::{self, Display, Formatter},
-    path::Path,
-    str::FromStr,
-};
+use std::{collections::BTreeMap, path::Path};
 
+use blackforge_api::setup::LEGACY_PIN_SERVER;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tokio::fs;
@@ -56,10 +52,10 @@ impl Manifest {
     }
 }
 
-/// One entry of `[mods]`. It is written as a plain version string while the
-/// mod is enabled, and as a table once it is disabled.
+/// One entry of `[mods]`. A mod that follows the newest version and is
+/// enabled is written as `"*"`, anything else as a table.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(from = "ModSpecRepr", into = "ModSpecRepr")]
+#[serde(try_from = "ModSpecRepr", into = "ModSpecRepr")]
 pub struct ModSpec {
     pub version: VersionReq,
     pub enabled: bool,
@@ -77,11 +73,13 @@ impl ModSpec {
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 enum ModSpecRepr {
-    Short(VersionReq),
+    Short(String),
     Full {
-        version: VersionReq,
-        #[serde(default = "enabled_by_default")]
+        version: String,
+        #[serde(default = "enabled_by_default", skip_serializing_if = "is_true")]
         enabled: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        server: Option<String>,
     },
 }
 
@@ -89,72 +87,92 @@ fn enabled_by_default() -> bool {
     true
 }
 
-impl From<ModSpecRepr> for ModSpec {
-    fn from(repr: ModSpecRepr) -> Self {
-        match repr {
-            ModSpecRepr::Short(version) => Self {
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_true(value: &bool) -> bool {
+    *value
+}
+
+impl TryFrom<ModSpecRepr> for ModSpec {
+    type Error = Error;
+
+    fn try_from(repr: ModSpecRepr) -> Result<Self> {
+        Ok(match repr {
+            ModSpecRepr::Short(version) => Self::new(VersionReq::from_parts(&version, None)?),
+            ModSpecRepr::Full {
                 version,
-                enabled: true,
+                enabled,
+                server,
+            } => Self {
+                version: VersionReq::from_parts(&version, server)?,
+                enabled,
             },
-            ModSpecRepr::Full { version, enabled } => Self { version, enabled },
-        }
+        })
     }
 }
 
 impl From<ModSpec> for ModSpecRepr {
     fn from(spec: ModSpec) -> Self {
-        if spec.enabled {
-            Self::Short(spec.version)
-        } else {
-            Self::Full {
-                version: spec.version,
-                enabled: false,
-            }
+        match (spec.version, spec.enabled) {
+            (VersionReq::Latest, true) => Self::Short("*".to_owned()),
+            (version, enabled) => Self::Full {
+                version: version.version_text(),
+                enabled,
+                server: version.server().map(ToOwned::to_owned),
+            },
         }
     }
 }
 
-/// Thunderstore has no version ranges, so a mod is either pinned to one
-/// version or follows the newest one through the lock file.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")]
+/// Thunderstore has no version ranges, so a mod either follows the newest
+/// version through the lock file or is pinned to the one a server needs.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum VersionReq {
     #[default]
     Latest,
-    Exact(Version),
+    Pinned(Pin),
 }
 
-impl FromStr for VersionReq {
-    type Err = Error;
+/// A mod held at the version a server needs. There is no pin without a
+/// server.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pin {
+    pub version: Version,
+    pub server: String,
+}
 
-    fn from_str(s: &str) -> Result<Self> {
-        if s == "*" {
-            Ok(Self::Latest)
-        } else {
-            Ok(Self::Exact(parse_version(s)?))
+impl VersionReq {
+    /// From the version text, `*` or an exact version, and the server name
+    /// that files and synced setups store next to it. A pin with no server
+    /// is an old one and belongs to `LEGACY_PIN_SERVER`.
+    pub fn from_parts(version: &str, server: Option<String>) -> Result<Self> {
+        if version == "*" {
+            return Ok(Self::Latest);
+        }
+        Ok(Self::Pinned(Pin {
+            version: parse_version(version)?,
+            server: server.unwrap_or_else(|| LEGACY_PIN_SERVER.to_owned()),
+        }))
+    }
+
+    /// `*` or the pinned version, the text files and synced setups store.
+    pub fn version_text(&self) -> String {
+        match self {
+            Self::Latest => "*".to_owned(),
+            Self::Pinned(pin) => pin.version.to_string(),
         }
     }
-}
 
-impl TryFrom<String> for VersionReq {
-    type Error = Error;
-
-    fn try_from(value: String) -> Result<Self> {
-        value.parse()
-    }
-}
-
-impl From<VersionReq> for String {
-    fn from(req: VersionReq) -> Self {
-        req.to_string()
-    }
-}
-
-impl Display for VersionReq {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    pub fn server(&self) -> Option<&str> {
         match self {
-            Self::Latest => f.write_str("*"),
-            Self::Exact(version) => write!(f, "{version}"),
+            Self::Latest => None,
+            Self::Pinned(pin) => Some(&pin.server),
+        }
+    }
+
+    pub fn pinned_version(&self) -> Option<&Version> {
+        match self {
+            Self::Latest => None,
+            Self::Pinned(pin) => Some(&pin.version),
         }
     }
 }
@@ -183,11 +201,52 @@ enabled = false
         assert!(!manifest.is_enabled(&epic));
         assert_eq!(
             manifest.mods[&epic].version,
-            VersionReq::Exact(Version::new(0, 9, 1))
+            VersionReq::Pinned(Pin {
+                version: Version::new(0, 9, 1),
+                server: LEGACY_PIN_SERVER.to_owned(),
+            })
         );
 
         let again: Manifest = toml::from_str(&toml::to_string(&manifest)?)?;
         assert_eq!(again, manifest);
+        Ok(())
+    }
+
+    #[test]
+    fn a_server_pin_keeps_its_server() -> Result<()> {
+        let text = r#"game = "valheim"
+
+[mods]
+Crystal-DigDeeper = { version = "1.3.1", server = "Durka" }
+"#;
+        let manifest: Manifest = toml::from_str(text)?;
+        let dig: PackageId = "Crystal-DigDeeper".parse()?;
+        assert_eq!(manifest.mods[&dig].version.server(), Some("Durka"));
+        assert!(manifest.is_enabled(&dig));
+
+        let written = toml::to_string(&manifest)?;
+        assert!(!written.contains("enabled"), "{written}");
+        let again: Manifest = toml::from_str(&written)?;
+        assert_eq!(again, manifest);
+        Ok(())
+    }
+
+    #[test]
+    fn an_old_pin_becomes_a_durka_pin_and_is_written_with_it() -> Result<()> {
+        let manifest: Manifest = toml::from_str(
+            "game = \"valheim\"
+
+[mods]
+Crystal-DigDeeper = \"1.3.1\"
+",
+        )?;
+        let dig: PackageId = "Crystal-DigDeeper".parse()?;
+        assert_eq!(
+            manifest.mods[&dig].version.server(),
+            Some(LEGACY_PIN_SERVER)
+        );
+        let written = toml::to_string(&manifest)?;
+        assert!(written.contains("server = \"Durka\""), "{written}");
         Ok(())
     }
 

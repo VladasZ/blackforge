@@ -109,7 +109,7 @@ impl Setup for ConfigPicker {
         self.table.set_data_source(self).register_cell::<PickCell>();
         self.table.place().t(PAD + 80.0).l(PAD).r(PAD).b(PAD + 48.0);
 
-        style::primary(self.apply, "apply");
+        style::primary(self.apply, "Apply");
         self.apply.place().r(PAD).b(PAD).size(120, style::BUTTON_H);
         self.apply.on_tap(move || {
             if self
@@ -124,7 +124,7 @@ impl Setup for ConfigPicker {
             }
         });
 
-        style::ghost(self.cancel, "cancel");
+        style::ghost(self.cancel, "Cancel");
         self.cancel
             .place()
             .r(PAD + 130.0)

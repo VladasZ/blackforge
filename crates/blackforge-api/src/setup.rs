@@ -15,13 +15,54 @@ pub struct Setup {
     pub configs: Settings,
 }
 
+/// Every pin written before pins named their server was made for Durka.
+pub const LEGACY_PIN_SERVER: &str = "Durka";
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "ModRepr")]
 pub struct Mod {
     pub version: String,
     /// None for a dependency; `*` or an exact version for an explicitly chosen mod.
     pub requested: Option<String>,
     pub enabled: bool,
     pub dependencies: Vec<String>,
+    /// The server whose install pinned the mod, set exactly when `requested`
+    /// is an exact version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ModRepr {
+    version: String,
+    requested: Option<String>,
+    enabled: bool,
+    dependencies: Vec<String>,
+    #[serde(default)]
+    server: Option<String>,
+}
+
+/// An old app still sends and stores pins without a server, so every read
+/// gives them `LEGACY_PIN_SERVER`.
+impl From<ModRepr> for Mod {
+    fn from(repr: ModRepr) -> Self {
+        let pinned = repr
+            .requested
+            .as_deref()
+            .is_some_and(|requested| requested != "*");
+        let server = match (pinned, repr.server) {
+            (true, None) => Some(LEGACY_PIN_SERVER.to_owned()),
+            (true, server) => server,
+            (false, _) => None,
+        };
+        Self {
+            version: repr.version,
+            requested: repr.requested,
+            enabled: repr.enabled,
+            dependencies: repr.dependencies,
+            server,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,6 +218,7 @@ mod tests {
                             requested: Some("*".to_owned()),
                             enabled: true,
                             dependencies: Vec::new(),
+                            server: None,
                         },
                     )
                 })
@@ -211,5 +253,26 @@ mod tests {
         );
         assert!(Summary::between(&after, &after).is_empty());
         assert_eq!(Summary::default().to_string(), "no changes");
+    }
+
+    #[test]
+    fn a_pin_without_a_server_reads_as_a_durka_pin() {
+        let old: Mod = serde_json::from_str(
+            r#"{"version":"1.3.1","requested":"1.3.1","enabled":true,"dependencies":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(old.server.as_deref(), Some(super::LEGACY_PIN_SERVER));
+
+        let named: Mod = serde_json::from_str(
+            r#"{"version":"1.3.1","requested":"1.3.1","enabled":true,"dependencies":[],"server":"Arena"}"#,
+        )
+        .unwrap();
+        assert_eq!(named.server.as_deref(), Some("Arena"));
+
+        let newest: Mod = serde_json::from_str(
+            r#"{"version":"1.3.1","requested":"*","enabled":true,"dependencies":[],"server":"Arena"}"#,
+        )
+        .unwrap();
+        assert_eq!(newest.server, None);
     }
 }

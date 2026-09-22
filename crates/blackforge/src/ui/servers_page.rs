@@ -8,21 +8,33 @@ use blackforge_core::servers::{Needs, ServerInstall, fetch, needs};
 use hilen::{
     refs::{Weak, weak_from_ref},
     ui::{
-        Button, CellRegistry, Container, Label, ModalView, Question, Setup, TableData, TableView,
-        TextAlignment, View, ViewData, view,
+        Button, CellRegistry, Container, ImageView, Label, ModalView, Question, Setup, TableData,
+        TableView, TextAlignment, View, ViewData, ViewFrame, ViewSubviews, view,
     },
 };
 
 use crate::{
     backend, cloud, social,
-    ui::{colors, server_modal::ServerModal, style, toast},
+    ui::{
+        colors, names,
+        pill::{self, Pill},
+        server_modal::ServerModal,
+        style, toast,
+    },
 };
 
-const ROW_HEIGHT: f32 = 80.0;
+/// Room for 2 rows of mod pills under the name and the owner line.
+const ROW_HEIGHT: f32 = 58.0 + 2.0 * pill::HEIGHT + PILL_GAP + 14.0;
 const BUTTON_WIDTH: f32 = 90.0;
+/// Fits "Install 12 mods".
+const INSTALL_WIDTH: f32 = 124.0;
+const PILL_GAP: f32 = 6.0;
+const MODS_T: f32 = 58.0;
+/// Room kept for the "+12 more" pill.
+const MORE_WIDTH: f32 = 80.0;
 const GAP: f32 = 8.0;
 /// The text of a row ends where the three buttons start.
-const TEXT_RIGHT: f32 = 16.0 + 3.0 * BUTTON_WIDTH + 2.0 * GAP + 16.0;
+const TEXT_RIGHT: f32 = 16.0 + INSTALL_WIDTH + 2.0 * BUTTON_WIDTH + 2.0 * GAP + 16.0;
 
 #[derive(Clone, Debug)]
 struct ServerRow {
@@ -54,7 +66,7 @@ impl Setup for ServersPage {
             .set_text("the mods a server needs, installed with one click");
         self.subtitle.place().t(56).l(style::PAGE_PAD).size(600, 16);
 
-        style::primary(self.register, "register a server");
+        style::primary(self.register, "Register a server");
         self.register
             .place()
             .t(28)
@@ -169,7 +181,7 @@ impl ServersPage {
             move |forge, progress| async move {
                 let profile = backend::profile(forge, &progress).await?;
                 let done = forge
-                    .install_server(&profile, &server.mods, &progress)
+                    .install_server(&profile, &server.name, &server.mods, &progress)
                     .await?;
                 Ok(format!("{}: {}", server.name, install_summary(&done)))
             },
@@ -239,20 +251,6 @@ fn install_summary(done: &ServerInstall) -> String {
     parts.join(", ")
 }
 
-/// `Owner-Name` without the owner, the way a player knows the mod.
-fn short_name(id: &str) -> &str {
-    id.split_once('-').map_or(id, |(_, name)| name)
-}
-
-fn mods_line(server: &Server) -> String {
-    server
-        .mods
-        .iter()
-        .map(|server_mod| format!("{} {}", short_name(&server_mod.id), server_mod.version))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 impl TableData for ServersPage {
     fn cell_height(&self, _: usize) -> f32 {
         ROW_HEIGHT
@@ -264,7 +262,8 @@ impl TableData for ServersPage {
 
     fn setup_cell(&mut self, index: usize, registry: &mut CellRegistry) -> Weak<dyn View> {
         let cell = registry.cell::<ServerCell>();
-        cell.set_row(index, weak_from_ref(self), &self.rows[index]);
+        let width = self.table.width() - TEXT_RIGHT - 4.0;
+        cell.set_row(index, weak_from_ref(self), &self.rows[index], width);
         cell
     }
 
@@ -275,11 +274,13 @@ impl TableData for ServersPage {
 struct ServerCell {
     index: usize,
     page: Weak<ServersPage>,
+    chips: Vec<Weak<Pill>>,
 
     #[init]
     name: Label,
     owner: Label,
-    mods: Label,
+    mods: Container,
+    ready_icon: ImageView,
     ready: Label,
     install: Button,
     edit: Button,
@@ -298,39 +299,39 @@ impl Setup for ServerCell {
         self.owner.set_ellipsize(true);
         self.owner.place().t(36).l(4).r(TEXT_RIGHT).h(16);
 
-        style::dim(self.mods);
-        self.mods.set_text_color(colors::FG);
-        self.mods.set_ellipsize(true);
-        self.mods.place().t(54).l(4).r(TEXT_RIGHT).h(16);
-
-        // The same rectangle as the install button, so the column reads as one.
-        self.ready.set_text("you have all");
-        self.ready.set_text_size(13).set_text_color(colors::OK);
-        self.ready.set_alignment(TextAlignment::Center);
-        self.ready.set_color(colors::OK_BG);
-        self.ready.set_corner_radius(7);
-        self.ready
+        self.mods.set_color(colors::CLEAR);
+        self.mods
             .place()
-            .r(16)
-            .t(24)
-            .size(BUTTON_WIDTH, style::BUTTON_H);
+            .t(MODS_T)
+            .l(4)
+            .r(TEXT_RIGHT)
+            .h(2.0 * pill::HEIGHT + PILL_GAP);
 
-        style::primary(self.install, "install");
+        // Plain text with a check, no box, so it does not read as a button.
+        self.ready_icon.set_image("check.svg");
+        self.ready_icon.place().r(16.0 + 84.0).t(28).size(16, 16);
+        self.ready.set_text("all installed");
+        self.ready.set_text_size(13).set_text_color(colors::OK);
+        self.ready.set_alignment(TextAlignment::Left);
+        self.ready.set_color(colors::CLEAR);
+        self.ready.place().r(16).t(26).size(80, 20);
+
+        style::primary(self.install, "Install");
         self.install
             .place()
             .r(16)
             .t(24)
-            .size(BUTTON_WIDTH, style::BUTTON_H);
+            .size(INSTALL_WIDTH, style::BUTTON_H);
         self.install.on_tap(move || {
             if self.page.is_ok() {
                 self.page.install(self.index);
             }
         });
 
-        style::ghost(self.edit, "edit");
+        style::ghost(self.edit, "Edit");
         self.edit
             .place()
-            .r(16.0 + BUTTON_WIDTH + GAP)
+            .r(16.0 + INSTALL_WIDTH + GAP)
             .t(24)
             .size(BUTTON_WIDTH, style::BUTTON_H);
         self.edit.on_tap(move || {
@@ -339,10 +340,10 @@ impl Setup for ServerCell {
             }
         });
 
-        style::danger(self.delete, "remove");
+        style::danger(self.delete, "Remove");
         self.delete
             .place()
-            .r(16.0 + 2.0 * (BUTTON_WIDTH + GAP))
+            .r(16.0 + INSTALL_WIDTH + BUTTON_WIDTH + 2.0 * GAP)
             .t(24)
             .size(BUTTON_WIDTH, style::BUTTON_H);
         self.delete.on_tap(move || {
@@ -357,7 +358,13 @@ impl Setup for ServerCell {
 }
 
 impl ServerCell {
-    fn set_row(mut self: Weak<Self>, index: usize, page: Weak<ServersPage>, row: &ServerRow) {
+    fn set_row(
+        mut self: Weak<Self>,
+        index: usize,
+        page: Weak<ServersPage>,
+        row: &ServerRow,
+        width: f32,
+    ) {
         self.index = index;
         self.page = page;
 
@@ -369,16 +376,62 @@ impl ServerCell {
             server.mods.len(),
             cloud::when(server.updated)
         ));
-        self.mods.set_text(mods_line(server));
+        self.show_mods(server, width);
 
         let ready = row.needs.is_empty();
         self.ready.set_hidden(!ready);
+        self.ready_icon.set_hidden(!ready);
         self.install.set_hidden(ready);
         self.install.set_text(match row.needs.count() {
-            1 => "install 1 mod".to_owned(),
-            count => format!("install {count} mods"),
+            1 => "Install 1 mod".to_owned(),
+            count => format!("Install {count} mods"),
         });
         self.edit.set_hidden(!row.mine);
         self.delete.set_hidden(!row.mine);
+    }
+
+    /// One pill per mod, readable name and version, in 2 rows at most. When
+    /// not all of them fit, the last place goes to "+5 more".
+    fn show_mods(mut self: Weak<Self>, server: &Server, width: f32) {
+        for mut chip in self.chips.drain(..) {
+            chip.remove_from_superview();
+        }
+        let texts: Vec<String> = server
+            .mods
+            .iter()
+            .map(|server_mod| format!("{} {}", names::title(&server_mod.id), server_mod.version))
+            .collect();
+        let rows_end = 2.0 * pill::HEIGHT + PILL_GAP;
+        let (mut x, mut y) = (0.0, 0.0);
+        for (shown, text) in texts.iter().enumerate() {
+            let left = texts.len() - shown;
+            let chip = self.mods.add_view::<Pill>();
+            let chip_width = chip.set("pill_version.svg", text);
+            let (at_x, at_y) = flow(x, y, chip_width, width);
+            // A pill that is not the last one leaves room for "+n more".
+            let (_, more_y) = flow(at_x + chip_width + PILL_GAP, at_y, MORE_WIDTH, width);
+            let fits =
+                at_y + pill::HEIGHT <= rows_end && (left == 1 || more_y + pill::HEIGHT <= rows_end);
+            if !fits {
+                let more_width = chip.set("pill_dependency.svg", &format!("+{left} more"));
+                let (at_x, at_y) = flow(x, y, more_width, width);
+                chip.place().l(at_x).t(at_y).size(more_width, pill::HEIGHT);
+                self.chips.push(chip);
+                break;
+            }
+            chip.place().l(at_x).t(at_y).size(chip_width, pill::HEIGHT);
+            self.chips.push(chip);
+            x = at_x + chip_width + PILL_GAP;
+            y = at_y;
+        }
+    }
+}
+
+/// Where a pill of `chip` width goes when the row has used `x` of `width`.
+fn flow(x: f32, y: f32, chip: f32, width: f32) -> (f32, f32) {
+    if x > 0.0 && x + chip > width {
+        (0.0, y + pill::HEIGHT + PILL_GAP)
+    } else {
+        (x, y)
     }
 }

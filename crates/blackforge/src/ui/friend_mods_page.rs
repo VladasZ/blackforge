@@ -10,7 +10,6 @@ use blackforge_core::{
     broken::Broken,
     config::{self, package_of},
     ident::PackageId,
-    manifest::VersionReq,
     social::picker::{self, Pick},
 };
 use hilen::{
@@ -18,7 +17,7 @@ use hilen::{
     refs::{Weak, weak_from_ref},
     ui::{
         Button, CellRegistry, Container, Label, ModalView, Setup, TableData, TableView,
-        TextAlignment, UIColor, VerticalAlignment, View, ViewData, ViewTouch, view,
+        TextAlignment, VerticalAlignment, View, ViewData, view,
     },
 };
 
@@ -27,15 +26,16 @@ use crate::{
     ui::{
         colors,
         config_picker::{ConfigPicker, PickerFile, PickerInput},
+        hover,
         mod_icon::ModIcon,
         mod_info::ModInfo,
         mod_pills::{ModPills, Note},
         mods_page::lock_change_summary,
-        pill, style, toast,
+        names, pill, style, toast,
     },
 };
 
-const ROW_HEIGHT: f32 = 88.0;
+const ROW_HEIGHT: f32 = 104.0;
 const BUTTON_WIDTH: f32 = 110.0;
 /// The pills end where the buttons start, with a gap.
 const PILLS_RIGHT: f32 = 16.0 + 2.0 * BUTTON_WIDTH + 8.0 + 16.0;
@@ -77,7 +77,7 @@ pub struct FriendModsPage {
 
 impl Setup for FriendModsPage {
     fn setup(self: Weak<Self>) {
-        style::ghost(self.back_button, "back");
+        style::ghost(self.back_button, "Back");
         self.back_button
             .place()
             .t(24)
@@ -194,9 +194,7 @@ impl FriendModsPage {
             "adding the mod",
             |forge, progress| async move {
                 let profile = backend::profile(forge, &progress).await?;
-                let (id, change) = forge
-                    .add(&profile, &id, VersionReq::Latest, &progress)
-                    .await?;
+                let (id, change) = forge.add(&profile, &id, &progress).await?;
                 forge.sync(&profile, &progress).await?;
                 Ok(format!("added {id}, {}", lock_change_summary(&change)))
             },
@@ -383,6 +381,7 @@ struct ModCell {
     #[init]
     icon: ModIcon,
     name: Label,
+    author: Label,
     description: Label,
     pills: ModPills,
     installed: Label,
@@ -398,6 +397,15 @@ impl Setup for ModCell {
         style::body(self.name);
         self.name.set_ellipsize(true);
 
+        style::dim(self.author);
+        self.author.set_ellipsize(true);
+        self.author
+            .place()
+            .t(TOP_LINE + 24.0)
+            .l(TEXT_LEFT)
+            .r(16)
+            .h(16);
+
         // The whole row width and 2 lines, like a row of Browse. A click on
         // the row opens the details with the full text.
         style::dim(self.description);
@@ -406,7 +414,7 @@ impl Setup for ModCell {
             .set_vertical_alignment(VerticalAlignment::Top);
         self.description
             .place()
-            .t(TOP_LINE + 30.0)
+            .t(TOP_LINE + 46.0)
             .l(TEXT_LEFT)
             .r(16)
             .h(36);
@@ -423,7 +431,7 @@ impl Setup for ModCell {
             .t(TOP_LINE - 4.0)
             .size(BUTTON_WIDTH, style::BUTTON_H);
 
-        style::primary(self.add, "add");
+        style::primary(self.add, "Add");
         self.add
             .place()
             .r(16)
@@ -435,7 +443,7 @@ impl Setup for ModCell {
             }
         });
 
-        style::ghost(self.copy_config, "copy config");
+        style::ghost(self.copy_config, "Copy config");
         self.copy_config
             .place()
             .r(16.0 + BUTTON_WIDTH + 8.0)
@@ -448,14 +456,7 @@ impl Setup for ModCell {
         });
 
         // The wash says the row can be clicked, the click opens the details.
-        self.enable_hover();
-        self.touch().hovered.val(self, move |hovered| {
-            self.set_color(if hovered {
-                colors::NAV_HOVER_BG.into()
-            } else {
-                UIColor::from(colors::CLEAR)
-            });
-        });
+        hover::row(self);
 
         self.line.set_color(colors::BORDER);
         self.line.place().l(0).r(0).b(0).h(1);
@@ -468,7 +469,8 @@ impl ModCell {
         self.page = page;
 
         self.icon.show(&row.id, &row.version);
-        self.name.set_text(&row.id);
+        self.name.set_text(names::title(&row.id));
+        self.author.set_text(names::author(&row.id));
         self.description.set_text(&row.description);
 
         // The pills sit right of the name, before the buttons. The name ends
@@ -478,7 +480,7 @@ impl ModCell {
         } else {
             Note::Disabled
         };
-        let pills = self.pills.set(&row.version, note, row.broken);
+        let pills = self.pills.set(&row.version, &note, row.broken);
         self.pills
             .place()
             .clear()

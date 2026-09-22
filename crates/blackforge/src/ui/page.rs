@@ -8,10 +8,11 @@ pub enum Page {
     Servers,
     Share,
     Doctor,
+    Settings,
 }
 
 impl Page {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Mods,
         Self::Browse,
         Self::Configs,
@@ -19,6 +20,7 @@ impl Page {
         Self::Servers,
         Self::Share,
         Self::Doctor,
+        Self::Settings,
     ];
 
     /// Lucide line icons, <https://lucide.dev>, ISC licensed. The accent color
@@ -32,6 +34,7 @@ impl Page {
             Self::Servers => "nav_servers.svg",
             Self::Share => "nav_share.svg",
             Self::Doctor => "nav_doctor.svg",
+            Self::Settings => "nav_settings.svg",
         }
     }
 
@@ -44,6 +47,7 @@ impl Page {
             Self::Servers => "Servers",
             Self::Share => "Share",
             Self::Doctor => "Doctor",
+            Self::Settings => "Settings",
         }
     }
 }
