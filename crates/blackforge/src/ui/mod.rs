@@ -15,6 +15,7 @@ mod icon_button;
 mod icon_label_button;
 mod mod_icon;
 mod mod_info;
+mod mod_pills;
 mod mods_page;
 mod nav_item;
 mod page;

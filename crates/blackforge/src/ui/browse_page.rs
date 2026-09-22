@@ -181,12 +181,7 @@ impl BrowsePage {
                             id,
                             version,
                             downloads: compact(package.downloads),
-                            // One flowing text, the label wraps it by itself.
-                            description: package
-                                .description
-                                .split_whitespace()
-                                .collect::<Vec<_>>()
-                                .join(" "),
+                            description: backend::summary(package),
                             page_url: package.package_url.clone(),
                             deprecated: package.deprecated,
                         }

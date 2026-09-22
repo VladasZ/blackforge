@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use blackforge_core::{forge::LockChange, install::SyncReport, manifest::VersionReq};
+use blackforge_core::{forge::LockChange, install::SyncReport};
 use hilen::{
     refs::{Weak, weak_from_ref},
     ui::{
@@ -19,8 +19,8 @@ use crate::{
         game_panel::{self, GamePanel},
         mod_icon::ModIcon,
         mod_info::ModInfo,
-        pill::{self, Pill},
-        style,
+        mod_pills::{ModPills, Note},
+        pill, style,
         sync_panel::{self, SyncPanel},
         toast,
     },
@@ -32,7 +32,6 @@ const MODS_T: f32 = GAME_T + game_panel::HEIGHT;
 const ROW_HEIGHT: f32 = 64.0;
 /// The table starts this far under the cloud sync line.
 const LIST_GAP: f32 = 12.0;
-const PILL_GAP: f32 = 6.0;
 const PILLS_T: f32 = 32.0;
 const ICON: f32 = 36.0;
 /// The name and the detail start right of the icon.
@@ -42,7 +41,7 @@ const TEXT_LEFT: f32 = 4.0 + ICON + 12.0;
 struct ModRow {
     id: String,
     version: String,
-    note: &'static str,
+    note: Note,
     /// The user asked for it, so it can be disabled and removed. A
     /// dependency leaves by itself when nothing needs it.
     direct: bool,
@@ -185,16 +184,10 @@ impl ModsPage {
                     .iter()
                     .map(|package| {
                         let spec = manifest.mods.get(&package.id);
-                        let note = match spec {
-                            Some(spec) if !spec.enabled => "disabled",
-                            Some(spec) if spec.version != VersionReq::Latest => "pinned",
-                            Some(_) => "",
-                            None => "dependency",
-                        };
                         ModRow {
                             id: package.id.to_string(),
                             version: package.version.to_string(),
-                            note,
+                            note: Note::of(spec),
                             direct: spec.is_some(),
                             enabled: spec.is_none_or(|spec| spec.enabled),
                         }
@@ -363,8 +356,7 @@ struct ModCell {
     #[init]
     icon: ModIcon,
     name: Label,
-    version: Pill,
-    note: Pill,
+    pills: ModPills,
     newer: Label,
     enabled: Switch,
     remove: Button,
@@ -420,29 +412,14 @@ impl ModCell {
         self.name
             .set_text_color(if row.enabled { colors::FG } else { colors::DIM });
 
-        // The pills sit left to right under the name, each as wide as its text.
-        let version = self.version.set("pill_version.svg", &row.version);
-        self.version
+        // The pills sit under the name, as wide as their text.
+        let pills = self.pills.set(&row.version, row.note);
+        self.pills
             .place()
             .clear()
             .l(TEXT_LEFT)
             .t(PILLS_T)
-            .size(version, pill::HEIGHT);
-        let icon = match row.note {
-            "dependency" => "pill_dependency.svg",
-            "pinned" => "pill_pinned.svg",
-            _ => "pill_disabled.svg",
-        };
-        self.note.set_hidden(row.note.is_empty());
-        if !row.note.is_empty() {
-            let note = self.note.set(icon, row.note);
-            self.note
-                .place()
-                .clear()
-                .l(TEXT_LEFT + version + PILL_GAP)
-                .t(PILLS_T)
-                .size(note, pill::HEIGHT);
-        }
+            .size(pills, pill::HEIGHT);
 
         self.newer.set_hidden(newest.is_none());
         if let Some(newest) = newest {

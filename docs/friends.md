@@ -50,7 +50,9 @@ From `backend/server/src/routes.rs`, every one wants `Authorization: Bearer <ses
 - `POST /api/friends/request`, `/accept`, `/decline`, `/remove` take a username. Two
   people who ask each other become friends at once. Remove ends a friendship for both
   sides, and it also takes back a request of my own.
-- `PUT /api/profile` uploads my mods and changed settings.
+- `PUT /api/profile` uploads my mods and changed settings. Every mod carries a
+  `dependency` flag, true when it is only in the lock because another mod needs it.
+  An app released before the flag sends none, and such mods read as asked for.
 - `GET /api/friends/{username}/profile` reads a friend's. Anybody who is not an accepted
   friend gets the same 404 as for a name that does not exist.
 - `POST /api/status` is the in game report.
@@ -76,7 +78,8 @@ sees the email or the Google name. The privacy page promises that.
   `apikey`, or a value that is a web address.
 - In game means the app started the game. It reports at the start, once a minute, and at
   the exit. The server reads 2 minutes of silence as not in game.
-- A friend's mod is added the way Browse adds one, the newest version with what it
+- The list of a friend shows the mods they asked for, dependencies left out. A
+  friend's mod is added the way Browse adds one, the newest version with what it
   needs. There is no install of a whole list.
 - The picker shows one row per setting that differs. The friend's value starts picked
   where the friend changed it, mine where only I did. Only rows set to the friend's side

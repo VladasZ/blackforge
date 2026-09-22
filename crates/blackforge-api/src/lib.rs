@@ -97,6 +97,12 @@ pub struct SharedMod {
     pub id: String,
     pub version: String,
     pub enabled: bool,
+    /// Pulled in by another mod, not asked for by the user. A friend who adds
+    /// the mod that needs it gets it anyway, so the list of a friend leaves
+    /// it out. An app released before this flag sends nothing, and its mods
+    /// all read as asked for.
+    #[serde(default)]
+    pub dependency: bool,
 }
 
 /// The settings of one `.cfg` file that differ from their defaults. A
@@ -184,6 +190,7 @@ mod tests {
                 id: "denikson-BepInExPack_Valheim".to_owned(),
                 version: "5.4.2202".to_owned(),
                 enabled: true,
+                dependency: false,
             }],
             configs: vec![SharedConfig {
                 file: "owner.mod.cfg".to_owned(),
@@ -196,5 +203,13 @@ mod tests {
         };
         let json = to_string(&profile).unwrap();
         assert_eq!(from_str::<SharedProfile>(&json).unwrap(), profile);
+    }
+
+    /// An app released before the dependency flag uploads mods without it.
+    #[test]
+    fn mod_without_dependency_flag_is_asked_for() {
+        let shared: SharedMod =
+            from_str(r#"{"id":"a-b","version":"1.0.0","enabled":true}"#).unwrap();
+        assert!(!shared.dependency);
     }
 }

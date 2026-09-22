@@ -4,6 +4,7 @@
 //! its start, its time and its error in the log file of the engine.
 
 use std::{
+    collections::HashMap,
     sync::{
         Arc, OnceLock,
         atomic::{AtomicBool, Ordering},
@@ -17,9 +18,10 @@ use blackforge_core::{
     cloud::recover,
     forge::{DEFAULT_PROFILE, Forge},
     game::{Target, VALHEIM},
+    ident::PackageId,
     profile::Profile,
     progress::Progress,
-    thunderstore::{FRESH_ENOUGH, PackageIndex},
+    thunderstore::{FRESH_ENOUGH, Package, PackageIndex},
 };
 use hilen::dispatch::{on_main, spawn};
 use tokio::sync::{Mutex, oneshot};
@@ -105,6 +107,38 @@ pub async fn index(forge: &Forge, progress: &Progress) -> Result<Arc<PackageInde
 /// fresh list, so the next reader sees it too.
 pub async fn forget_index() {
     *INDEX.lock().await = None;
+}
+
+/// The description of every named mod that the package list knows, by id.
+/// A page that must work without the network shows its rows without the
+/// descriptions when the list cannot be read, the failure goes to the log.
+pub async fn descriptions<'a>(
+    forge: &Forge,
+    progress: &Progress,
+    ids: impl Iterator<Item = &'a PackageId>,
+) -> HashMap<String, String> {
+    let index = match index(forge, progress).await {
+        Ok(index) => index,
+        Err(error) => {
+            log::warn!("no descriptions, the package list did not load: {error:#}");
+            return HashMap::new();
+        }
+    };
+    ids.filter_map(|id| {
+        let package = index.get(id)?;
+        Some((id.to_string(), summary(package)))
+    })
+    .collect()
+}
+
+/// The description of a package as one flowing text, a label wraps it by
+/// itself.
+pub fn summary(package: &Package) -> String {
+    package
+        .description
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Runs an operation that only reads. Any number of them can overlap.

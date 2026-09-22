@@ -1,5 +1,5 @@
-//! What a profile shows to friends: the mods of the lock, and the settings
-//! the user changed.
+//! What a profile shows to friends: the mods of the lock, each marked when
+//! it is only a dependency, and the settings the user changed.
 
 use blackforge_api::{SharedConfig, SharedMod, SharedProfile, SharedSetting};
 
@@ -46,6 +46,7 @@ pub async fn shared_profile(profile: &Profile) -> Result<SharedProfile> {
             id: package.id.to_string(),
             version: package.version.to_string(),
             enabled: manifest.is_enabled(&package.id),
+            dependency: !manifest.mods.contains_key(&package.id),
         })
         .collect();
 

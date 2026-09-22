@@ -8,30 +8,60 @@ use hilen::{
     refs::{Weak, weak_from_ref},
     ui::{
         CellRegistry, Container, Label, Setup, Switch, TableData, TableView, TextAlignment,
-        TextField, View, ViewData, ViewTouch, view,
+        TextField, VerticalAlignment, View, ViewData, ViewFrame, ViewTouch, view,
     },
 };
 
 use crate::{
     backend,
-    ui::{colors, mod_icon::ModIcon, style, toast},
+    ui::{
+        colors,
+        mod_icon::ModIcon,
+        mod_pills::{ModPills, Note},
+        pill, style, toast,
+    },
 };
 
 const FILES_WIDTH: f32 = 290.0;
-const CARD_HEIGHT: f32 = 56.0;
+/// The scroll bar draws over the right edge of the table, a card ends
+/// before it.
+const BAR_CLEAR: f32 = 12.0;
 const CARD_GAP: f32 = 8.0;
-const FILE_HEIGHT: f32 = CARD_HEIGHT + CARD_GAP;
 const FILE_ICON: f32 = 36.0;
-/// The name and the file start right of the icon.
+/// The name, the file and the rest start right of the icon.
 const FILE_TEXT_LEFT: f32 = 10.0 + FILE_ICON + 12.0;
+const DESCRIPTION_T: f32 = 49.0;
+/// Two lines, the card is narrow. The details of the mod have the rest.
+const DESCRIPTION_H: f32 = 34.0;
+/// The card is as wide as the column less the bar, so the text width is
+/// known before the card is laid out.
+const DESCRIPTION_W: f32 = FILES_WIDTH - BAR_CLEAR - FILE_TEXT_LEFT - 10.0;
+const PILLS_T: f32 = DESCRIPTION_T + DESCRIPTION_H + 4.0;
+const CARD_HEIGHT: f32 = PILLS_T + pill::HEIGHT + 10.0;
+const FILE_HEIGHT: f32 = CARD_HEIGHT + CARD_GAP;
+/// A setting row with a detail of one line. A longer detail wraps and
+/// makes its row taller.
 const SETTING_HEIGHT: f32 = 62.0;
+const DETAIL_T: f32 = 34.0;
+const DETAIL_L: f32 = 4.0;
+/// The value field and the gap before it.
+const DETAIL_R: f32 = 310.0;
+const SETTING_PAD_B: f32 = 12.0;
 
 /// One config file and the mod it most likely belongs to.
 #[derive(Clone, Debug)]
 struct FileRow {
     file: String,
-    /// The id and the version of the mod, for the name and the icon.
-    package: Option<(String, String)>,
+    package: Option<FilePackage>,
+}
+
+#[derive(Clone, Debug)]
+struct FilePackage {
+    id: String,
+    version: String,
+    note: Note,
+    /// Empty when the package list does not know the mod.
+    description: String,
 }
 
 #[view]
@@ -99,15 +129,19 @@ impl Setup for ConfigFiles {
     fn setup(mut self: Weak<Self>) {
         self.table.set_data_source(self).register_cell::<FileCell>();
         style::table(self.table);
+        self.table.set_cell_margins(0, BAR_CLEAR);
         self.table.place().back();
 
         backend::load(
             "reading the configs",
             |forge, progress| async move {
                 let profile = backend::profile(forge, &progress).await?;
+                let manifest = profile.manifest().await?;
                 let lock = profile.lock().await?;
-                let rows = list(&profile)
-                    .await?
+                let files = list(&profile).await?;
+                let ids = lock.packages.iter().map(|package| &package.id);
+                let descriptions = backend::descriptions(forge, &progress, ids).await;
+                let rows = files
                     .into_iter()
                     .map(|file| {
                         let id = package_of(&file, lock.packages.iter().map(|package| &package.id));
@@ -115,7 +149,15 @@ impl Setup for ConfigFiles {
                             .packages
                             .iter()
                             .find(|package| Some(&package.id) == id)
-                            .map(|package| (package.id.to_string(), package.version.to_string()));
+                            .map(|package| FilePackage {
+                                id: package.id.to_string(),
+                                version: package.version.to_string(),
+                                note: Note::of(manifest.mods.get(&package.id)),
+                                description: descriptions
+                                    .get(&package.id.to_string())
+                                    .cloned()
+                                    .unwrap_or_default(),
+                            });
                         FileRow { file, package }
                     })
                     .collect();
@@ -129,12 +171,24 @@ impl Setup for ConfigFiles {
                     Ok(rows) => {
                         self.loaded.trigger(rows.len());
                         self.rows = rows;
-                        self.table.reload_data();
+                        // The page opens on the first file, an empty right
+                        // side says nothing.
+                        self.pick(0);
                     }
                     Err(error) => toast::failure(&error),
                 }
             },
         );
+    }
+}
+
+impl ConfigFiles {
+    fn pick(mut self: Weak<Self>, index: usize) {
+        if let Some(file) = self.rows.get(index).map(|row| row.file.clone()) {
+            self.selected = Some(index);
+            self.picked.trigger(file);
+        }
+        self.table.reload_data();
     }
 }
 
@@ -155,12 +209,7 @@ impl TableData for ConfigFiles {
     }
 
     fn cell_selected(&mut self, index: usize) {
-        let Some(row) = self.rows.get(index) else {
-            return;
-        };
-        self.selected = Some(index);
-        self.picked.trigger(row.file.clone());
-        self.table.reload_data();
+        weak_from_ref(self).pick(index);
     }
 }
 
@@ -186,17 +235,15 @@ struct FileCard {
     icon: ModIcon,
     name: Label,
     file: Label,
+    description: Label,
+    pills: ModPills,
 }
 
 impl Setup for FileCard {
     fn setup(self: Weak<Self>) {
         style::card(self);
 
-        self.icon
-            .place()
-            .l(10)
-            .center_y()
-            .size(FILE_ICON, FILE_ICON);
+        self.icon.place().l(10).t(10).size(FILE_ICON, FILE_ICON);
 
         style::body(self.name);
         self.name.set_ellipsize(true);
@@ -205,6 +252,17 @@ impl Setup for FileCard {
         style::dim(self.file);
         self.file.set_ellipsize(true);
         self.file.place().t(31).l(FILE_TEXT_LEFT).r(10).h(16);
+
+        style::dim(self.description);
+        self.description.set_multiline(true);
+        self.description
+            .set_vertical_alignment(VerticalAlignment::Top);
+        self.description
+            .place()
+            .t(DESCRIPTION_T)
+            .l(FILE_TEXT_LEFT)
+            .r(10)
+            .h(DESCRIPTION_H);
 
         // The wash says the card can be clicked, the click opens the file.
         self.enable_hover();
@@ -217,14 +275,24 @@ impl Setup for FileCard {
 impl FileCard {
     fn set_file(mut self: Weak<Self>, row: &FileRow, selected: bool) {
         let stem = row.file.trim_end_matches(".cfg");
-        if let Some((id, version)) = &row.package {
-            self.icon.show(id, version);
+        self.pills.set_hidden(row.package.is_none());
+        if let Some(package) = &row.package {
+            self.icon.show(&package.id, &package.version);
             // `Owner-Name`, the name alone is the title of the card.
             self.name
-                .set_text(id.split_once('-').map_or(stem, |(_, name)| name));
+                .set_text(package.id.split_once('-').map_or(stem, |(_, name)| name));
+            fit_description(self.description, &package.description);
+            let pills = self.pills.set(&package.version, package.note);
+            self.pills
+                .place()
+                .clear()
+                .l(FILE_TEXT_LEFT)
+                .t(PILLS_T)
+                .size(pills, pill::HEIGHT);
         } else {
             self.icon.clear();
             self.name.set_text(stem);
+            self.description.set_text("");
         }
         self.file.set_text(&row.file);
 
@@ -249,10 +317,41 @@ impl FileCard {
     }
 }
 
+/// The description cut to the lines the card has room for. A multiline
+/// label clips a line that does not fit, and half a line of text reads as
+/// a mistake, so whole words go until the rest fits.
+fn fit_description(label: Weak<Label>, text: &str) {
+    label.set_text(text);
+    let mut words: Vec<&str> = text.split(' ').collect();
+    while label.size_for_width(DESCRIPTION_W).height > DESCRIPTION_H && words.pop().is_some() {
+        label.set_text(format!("{}...", words.join(" ")));
+    }
+}
+
 #[derive(Clone, Debug)]
 enum Row {
     Section(String),
-    Setting(Setting),
+    Setting(SettingRow),
+}
+
+#[derive(Clone, Debug)]
+struct SettingRow {
+    setting: Setting,
+    /// The description and the default, the text under the key.
+    detail: String,
+}
+
+impl SettingRow {
+    fn new(setting: Setting) -> Self {
+        let mut detail = setting.description.join(" ");
+        if let Some(default) = &setting.default {
+            if !detail.is_empty() {
+                detail.push_str(", ");
+            }
+            detail.push_str(&format!("default {default}"));
+        }
+        Self { setting, detail }
+    }
 }
 
 #[view]
@@ -262,16 +361,30 @@ struct ConfigSettings {
 
     #[init]
     table: TableView,
+    /// Never shown. It has the look of a detail label, so it can say how
+    /// tall a detail is at the width the table has now.
+    probe: Label,
 }
 
 impl Setup for ConfigSettings {
-    fn setup(self: Weak<Self>) {
+    fn setup(mut self: Weak<Self>) {
         self.table
             .set_data_source(self)
             .register_cell::<SectionCell>()
             .register_cell::<SettingCell>();
         style::table(self.table);
+        self.table.set_variable_heights(true);
         self.table.place().back();
+        // A detail wraps at the width of the panel, so a new width means new
+        // row heights. The table listens to its own size event itself and an
+        // event takes one listener, so the panel listens to its own. The
+        // panel is laid out before the table in it, so its width is the
+        // fresh one, and the table fills it.
+        self.size_changed().sub(move || self.table.reload_data());
+
+        style::dim(self.probe);
+        self.probe.set_multiline(true);
+        self.probe.set_hidden(true);
     }
 }
 
@@ -290,7 +403,7 @@ impl ConfigSettings {
                         section = Some(setting.section.clone());
                         rows.push(Row::Section(setting.section.clone()));
                     }
-                    rows.push(Row::Setting(setting));
+                    rows.push(Row::Setting(SettingRow::new(setting)));
                 }
                 Ok((file, rows))
             },
@@ -312,16 +425,16 @@ impl ConfigSettings {
     }
 
     fn save(mut self: Weak<Self>, index: usize, value: String) {
-        let Some(Row::Setting(setting)) = self.rows.get_mut(index) else {
+        let Some(Row::Setting(row)) = self.rows.get_mut(index) else {
             return;
         };
-        if setting.value == value {
+        if row.setting.value == value {
             return;
         }
-        setting.value.clone_from(&value);
+        row.setting.value.clone_from(&value);
 
-        let section = setting.section.clone();
-        let key = setting.key.clone();
+        let section = row.setting.section.clone();
+        let key = row.setting.key.clone();
         let file = self.file.clone();
         backend::change(
             "saving the config",
@@ -348,8 +461,14 @@ impl ConfigSettings {
 }
 
 impl TableData for ConfigSettings {
-    fn cell_height(&self, _: usize) -> f32 {
-        SETTING_HEIGHT
+    fn cell_height(&self, index: usize) -> f32 {
+        let Row::Setting(row) = &self.rows[index] else {
+            return SETTING_HEIGHT;
+        };
+        self.probe.set_text(&row.detail);
+        let width = self.width() - DETAIL_L - DETAIL_R;
+        let detail = self.probe.size_for_width(width).height;
+        (DETAIL_T + detail + SETTING_PAD_B).max(SETTING_HEIGHT)
     }
 
     fn number_of_cells(&self) -> usize {
@@ -363,9 +482,9 @@ impl TableData for ConfigSettings {
                 cell.name.set_text(name);
                 cell
             }
-            Row::Setting(setting) => {
+            Row::Setting(row) => {
                 let cell = registry.cell::<SettingCell>();
-                cell.set_setting(index, weak_from_ref(self), setting);
+                cell.set_setting(index, weak_from_ref(self), row);
                 cell
             }
         }
@@ -405,11 +524,18 @@ impl Setup for SettingCell {
     fn setup(self: Weak<Self>) {
         style::body(self.key);
         self.key.set_ellipsize(true);
-        self.key.place().t(10).l(4).r(310).h(20);
+        self.key.place().t(10).l(DETAIL_L).r(DETAIL_R).h(20);
 
+        // The whole text, wrapped. The row is as tall as the text needs.
         style::dim(self.detail);
-        self.detail.set_ellipsize(true);
-        self.detail.place().t(34).l(4).r(310).h(16);
+        self.detail.set_multiline(true);
+        self.detail.set_vertical_alignment(VerticalAlignment::Top);
+        self.detail
+            .place()
+            .t(DETAIL_T)
+            .l(DETAIL_L)
+            .r(DETAIL_R)
+            .b(SETTING_PAD_B);
 
         style::field(self.value, "");
         self.value
@@ -440,22 +566,14 @@ impl SettingCell {
         mut self: Weak<Self>,
         index: usize,
         page: Weak<ConfigSettings>,
-        setting: &Setting,
+        row: &SettingRow,
     ) {
         self.index = index;
         self.page = page;
-        self.key.set_text(&setting.key);
+        self.key.set_text(&row.setting.key);
+        self.detail.set_text(&row.detail);
 
-        let mut detail = setting.description.first().cloned().unwrap_or_default();
-        if let Some(default) = &setting.default {
-            if !detail.is_empty() {
-                detail.push_str(", ");
-            }
-            detail.push_str(&format!("default {default}"));
-        }
-        self.detail.set_text(detail);
-
-        let on = setting.as_bool();
+        let on = row.setting.as_bool();
         self.value.set_hidden(on.is_some());
         self.toggle.set_hidden(on.is_none());
         match on {
@@ -463,7 +581,7 @@ impl SettingCell {
                 self.toggle.set_on(on);
             }
             None => {
-                self.value.set_text(&setting.value);
+                self.value.set_text(&row.setting.value);
             }
         }
     }

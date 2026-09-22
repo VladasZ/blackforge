@@ -1,8 +1,9 @@
-//! The mods of one friend. Every row adds that one mod the way Browse does,
-//! the newest version with what it needs. A mod both of us have gets a second
-//! button that opens the config picker.
+//! The mods of one friend, the ones they asked for. A dependency comes
+//! along with the mod that needs it, so it is not listed. Every row adds
+//! that one mod the way Browse does, the newest version with what it needs.
+//! A mod both of us have gets a second button that opens the config picker.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use blackforge_api::SharedProfile;
 use blackforge_core::{
@@ -16,7 +17,7 @@ use hilen::{
     refs::{Weak, weak_from_ref},
     ui::{
         Button, CellRegistry, Container, Label, ModalView, Setup, TableData, TableView,
-        TextAlignment, View, ViewData, view,
+        TextAlignment, UIColor, VerticalAlignment, View, ViewData, ViewTouch, view,
     },
 };
 
@@ -25,13 +26,23 @@ use crate::{
     ui::{
         colors,
         config_picker::{ConfigPicker, PickerFile, PickerInput},
+        mod_icon::ModIcon,
+        mod_info::ModInfo,
+        mod_pills::{ModPills, Note},
         mods_page::lock_change_summary,
-        style, toast,
+        pill, style, toast,
     },
 };
 
-const ROW_HEIGHT: f32 = 58.0;
+const ROW_HEIGHT: f32 = 88.0;
 const BUTTON_WIDTH: f32 = 110.0;
+/// The pills end where the buttons start, with a gap.
+const PILLS_RIGHT: f32 = 16.0 + 2.0 * BUTTON_WIDTH + 8.0 + 16.0;
+/// Where the first line of a row starts: the name, the pills and the buttons.
+const TOP_LINE: f32 = 12.0;
+const ICON: f32 = 40.0;
+/// The name and the description start right of the icon.
+const TEXT_LEFT: f32 = 4.0 + ICON + 12.0;
 
 #[derive(Clone, Debug)]
 struct ModRow {
@@ -40,6 +51,8 @@ struct ModRow {
     /// Off in the friend's profile.
     enabled: bool,
     installed: bool,
+    /// Empty when the package list does not know the mod.
+    description: String,
     /// The friend's shared config files of this mod that I have as well.
     configs: Vec<String>,
 }
@@ -123,8 +136,14 @@ impl FriendModsPage {
                     .into_iter()
                     .map(|file| file.to_lowercase())
                     .collect();
+                let ids: Vec<PackageId> = shared
+                    .mods
+                    .iter()
+                    .filter_map(|shared| shared.id.parse().ok())
+                    .collect();
+                let descriptions = backend::descriptions(forge, &progress, ids.iter()).await;
 
-                let rows = rows_of(&shared, &installed, &my_configs);
+                let rows = rows_of(&shared, &ids, &installed, &my_configs, &descriptions);
                 Ok((shared, rows))
             },
             move |result| {
@@ -271,22 +290,21 @@ fn write_picks(files: Vec<PickerFile>) {
     );
 }
 
-/// A config file has no field that names its mod, so the file names are
-/// matched against the friend's mods the way the Configs page does it.
+/// The mods the friend asked for, dependencies left out. A config file has
+/// no field that names its mod, so the file names are matched against all
+/// of the friend's mods the way the Configs page does it, `ids` holds the
+/// dependencies too so a file of one is not given to another mod.
 fn rows_of(
     shared: &SharedProfile,
+    ids: &[PackageId],
     installed: &HashSet<String>,
     my_configs: &HashSet<String>,
+    descriptions: &HashMap<String, String>,
 ) -> Vec<ModRow> {
-    let ids: Vec<PackageId> = shared
-        .mods
-        .iter()
-        .filter_map(|shared| shared.id.parse().ok())
-        .collect();
-
     shared
         .mods
         .iter()
+        .filter(|shared_mod| !shared_mod.dependency)
         .map(|shared_mod| {
             let installed = installed.contains(&shared_mod.id);
             let configs = shared
@@ -294,7 +312,7 @@ fn rows_of(
                 .iter()
                 .filter(|config| installed && my_configs.contains(&config.file.to_lowercase()))
                 .filter(|config| {
-                    package_of(&config.file, &ids).is_some_and(|id| id.to_string() == shared_mod.id)
+                    package_of(&config.file, ids).is_some_and(|id| id.to_string() == shared_mod.id)
                 })
                 .map(|config| config.file.clone())
                 .collect();
@@ -304,6 +322,10 @@ fn rows_of(
                 version: shared_mod.version.clone(),
                 enabled: shared_mod.enabled,
                 installed,
+                description: descriptions
+                    .get(&shared_mod.id)
+                    .cloned()
+                    .unwrap_or_default(),
                 configs,
             }
         })
@@ -325,7 +347,16 @@ impl TableData for FriendModsPage {
         cell
     }
 
-    fn cell_selected(&mut self, _: usize) {}
+    fn cell_selected(&mut self, index: usize) {
+        let page = weak_from_ref(self);
+        if let Some(row) = self.rows.get(index) {
+            ModInfo::open(&row.id, move |changed| {
+                if changed && page.is_ok() {
+                    page.refresh();
+                }
+            });
+        }
+    }
 }
 
 #[view]
@@ -334,8 +365,10 @@ struct ModCell {
     page: Weak<FriendModsPage>,
 
     #[init]
+    icon: ModIcon,
     name: Label,
-    detail: Label,
+    description: Label,
+    pills: ModPills,
     installed: Label,
     add: Button,
     copy_config: Button,
@@ -344,22 +377,23 @@ struct ModCell {
 
 impl Setup for ModCell {
     fn setup(self: Weak<Self>) {
+        self.icon.place().l(4).t(TOP_LINE).size(ICON, ICON);
+
         style::body(self.name);
         self.name.set_ellipsize(true);
-        self.name
-            .place()
-            .t(10)
-            .l(4)
-            .r(16.0 + 2.0 * BUTTON_WIDTH + 24.0)
-            .h(20);
 
-        style::dim(self.detail);
-        self.detail
+        // The whole row width and 2 lines, like a row of Browse. A click on
+        // the row opens the details with the full text.
+        style::dim(self.description);
+        self.description.set_multiline(true);
+        self.description
+            .set_vertical_alignment(VerticalAlignment::Top);
+        self.description
             .place()
-            .t(32)
-            .l(4)
-            .r(16.0 + 2.0 * BUTTON_WIDTH + 24.0)
-            .h(16);
+            .t(TOP_LINE + 30.0)
+            .l(TEXT_LEFT)
+            .r(16)
+            .h(36);
 
         // The same rectangle as the add button, so the column reads as one.
         self.installed.set_text("installed");
@@ -370,14 +404,14 @@ impl Setup for ModCell {
         self.installed
             .place()
             .r(16)
-            .t(13)
+            .t(TOP_LINE - 4.0)
             .size(BUTTON_WIDTH, style::BUTTON_H);
 
         style::primary(self.add, "add");
         self.add
             .place()
             .r(16)
-            .t(13)
+            .t(TOP_LINE - 4.0)
             .size(BUTTON_WIDTH, style::BUTTON_H);
         self.add.on_tap(move || {
             if self.page.is_ok() {
@@ -389,12 +423,22 @@ impl Setup for ModCell {
         self.copy_config
             .place()
             .r(16.0 + BUTTON_WIDTH + 8.0)
-            .t(13)
+            .t(TOP_LINE - 4.0)
             .size(BUTTON_WIDTH, style::BUTTON_H);
         self.copy_config.on_tap(move || {
             if self.page.is_ok() {
                 self.page.copy_config(self.index);
             }
+        });
+
+        // The wash says the row can be clicked, the click opens the details.
+        self.enable_hover();
+        self.touch().hovered.val(self, move |hovered| {
+            self.set_color(if hovered {
+                colors::NAV_HOVER_BG.into()
+            } else {
+                UIColor::from(colors::CLEAR)
+            });
         });
 
         self.line.set_color(colors::BORDER);
@@ -407,12 +451,31 @@ impl ModCell {
         self.index = index;
         self.page = page;
 
+        self.icon.show(&row.id, &row.version);
         self.name.set_text(&row.id);
-        self.detail.set_text(if row.enabled {
-            format!("version {}", row.version)
+        self.description.set_text(&row.description);
+
+        // The pills sit right of the name, before the buttons. The name ends
+        // where they start.
+        let note = if row.enabled {
+            Note::None
         } else {
-            format!("version {}, turned off by your friend", row.version)
-        });
+            Note::Disabled
+        };
+        let pills = self.pills.set(&row.version, note);
+        self.pills
+            .place()
+            .clear()
+            .r(PILLS_RIGHT)
+            .t(TOP_LINE)
+            .size(pills, pill::HEIGHT);
+        self.name
+            .place()
+            .clear()
+            .t(TOP_LINE + 2.0)
+            .l(TEXT_LEFT)
+            .r(PILLS_RIGHT + pills + 8.0)
+            .h(20);
 
         self.installed.set_hidden(!row.installed);
         self.add.set_hidden(row.installed);
