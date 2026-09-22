@@ -14,7 +14,7 @@ use blackforge_core::{
     profile::Profile,
     progress::Progress,
 };
-use chrono::{DateTime, Local, Utc};
+use chrono::Utc;
 use gethostname::gethostname;
 use hilen::{
     dispatch::{on_main, sleep, spawn},
@@ -25,7 +25,7 @@ use crate::{
     backend, launcher, social,
     ui::{
         conflict_dialog::{self, ConflictInput},
-        sync_panel, toast,
+        sync_panel, time, toast,
     },
 };
 
@@ -56,11 +56,7 @@ impl Status {
             Self::Idle => String::new(),
             Self::Syncing => "Syncing".to_owned(),
             Self::Installing => "Installing the setup from the cloud".to_owned(),
-            Self::Synced(at) => match (Utc::now().timestamp() - at) / 60 {
-                ..1 => "Synced just now".to_owned(),
-                1 => "Synced 1 minute ago".to_owned(),
-                minutes => format!("Synced {minutes} minutes ago"),
-            },
+            Self::Synced(at) => format!("Synced {}", time::ago(*at)),
             Self::Offline => "Offline, will retry".to_owned(),
             Self::Waiting => {
                 "Waiting for your choice between this machine and the cloud".to_owned()
@@ -414,18 +410,6 @@ pub async fn rollback(revision: i64) -> Result<()> {
         bail!("another machine just saved changes, try again");
     }
     Ok(())
-}
-
-/// A time of the server in the zone and the words of this machine.
-pub fn when(created: i64) -> String {
-    DateTime::from_timestamp(created, 0).map_or_else(
-        || "an unknown time".to_owned(),
-        |time| {
-            time.with_timezone(&Local)
-                .format("%a %d %b %Y %H:%M")
-                .to_string()
-        },
-    )
 }
 
 /// Revisions of releases up to 0.1.8 carry no machine name.

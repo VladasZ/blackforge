@@ -1,6 +1,8 @@
 //! The left column: the brand, one entry per page and the button that starts
 //! the game.
 
+use std::cell::Cell;
+
 use hilen::{
     Event,
     refs::Weak,
@@ -8,8 +10,13 @@ use hilen::{
 };
 
 use crate::{
-    launcher,
-    ui::{colors, nav_item::NavItem, page::Page, style},
+    launcher::{self, Run},
+    ui::{
+        colors,
+        nav_item::{Badge, NavItem},
+        page::Page,
+        style,
+    },
 };
 
 pub const WIDTH: f32 = 208.0;
@@ -18,6 +25,33 @@ const PAD: f32 = 14.0;
 const NAV_TOP: f32 = 72.0;
 const NAV_HEIGHT: f32 = 36.0;
 const NAV_GAP: f32 = 4.0;
+
+thread_local! {
+    static SIDEBAR: Cell<Weak<Sidebar>> = const { Cell::new(Weak::const_default()) };
+}
+
+fn sidebar() -> Option<Weak<Sidebar>> {
+    let sidebar = SIDEBAR.with(Cell::get);
+    sidebar.is_ok().then_some(sidebar)
+}
+
+/// Shows what waits on `page` next to its entry.
+pub fn set_badge(page: Page, badge: Badge) {
+    if let Some(sidebar) = sidebar() {
+        for (item_page, item) in &sidebar.items {
+            if *item_page == page {
+                item.set_badge(badge);
+            }
+        }
+    }
+}
+
+/// The run button follows the launcher.
+pub fn show_run(run: Run) {
+    if let Some(sidebar) = sidebar() {
+        sidebar.show_run(run);
+    }
+}
 
 #[view]
 pub struct Sidebar {
@@ -52,10 +86,12 @@ impl Setup for Sidebar {
             y += NAV_HEIGHT + NAV_GAP;
         }
 
-        style::primary(self.run, "Run game");
         self.run.set_text_size(14);
         self.run.place().b(PAD + 4.0).l(PAD).r(PAD).h(40);
         self.run.on_tap(launcher::run_game);
+
+        SIDEBAR.with(|slot| slot.set(self));
+        self.show_run(launcher::run());
     }
 }
 
@@ -64,5 +100,23 @@ impl Sidebar {
         for (page, item) in &self.items {
             item.set_selected(*page == selected);
         }
+    }
+
+    fn show_run(self: Weak<Self>, run: Run) {
+        let mut button = self.run;
+        let text = match run {
+            Run::Idle => "Run game",
+            Run::Syncing => "Syncing...",
+            Run::Starting => "Starting...",
+            Run::Running => "Running",
+        };
+        if run == Run::Idle {
+            style::primary(button, text);
+        } else {
+            style::ghost(button, text);
+            button.set_text_color(colors::DIM);
+        }
+        button.set_text_size(14);
+        button.set_enabled(run == Run::Idle);
     }
 }

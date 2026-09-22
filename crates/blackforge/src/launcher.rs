@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
     sync::{
         LazyLock,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicU8, Ordering},
     },
 };
 
@@ -24,13 +24,44 @@ use crate::{
     backend,
     cloud::{self, Launch},
     social,
-    ui::toast,
+    ui::{sidebar, toast},
 };
 
-static RUNNING: AtomicBool = AtomicBool::new(false);
+/// Where a start of the game is, shown on the run button.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Run {
+    Idle,
+    Syncing,
+    Starting,
+    Running,
+}
 
+impl Run {
+    fn from_u8(value: u8) -> Self {
+        match value {
+            1 => Self::Syncing,
+            2 => Self::Starting,
+            3 => Self::Running,
+            _ => Self::Idle,
+        }
+    }
+}
+
+static RUN: AtomicU8 = AtomicU8::new(Run::Idle as u8);
+
+pub fn run() -> Run {
+    Run::from_u8(RUN.load(Ordering::SeqCst))
+}
+
+/// A start is under way or the game runs.
 pub fn running() -> bool {
-    RUNNING.load(Ordering::SeqCst)
+    run() != Run::Idle
+}
+
+fn set_run(run: Run) {
+    RUN.store(run as u8, Ordering::SeqCst);
+    on_main(move || sidebar::show_run(run));
 }
 
 static GAME_ARGS: LazyLock<OnDisk<String>> = LazyLock::new(|| OnDisk::new("gui-game-args.json"));
@@ -65,11 +96,26 @@ pub fn run_game_from(game_dir: PathBuf) {
 }
 
 fn start(game_dir: Option<PathBuf>) {
-    if RUNNING.swap(true, Ordering::SeqCst) {
-        toast::info("the game is already running");
+    let first = if social::signed_in() {
+        Run::Syncing
+    } else {
+        Run::Starting
+    };
+    // The button is off while a start runs, a second start can only come
+    // from the folder picker of a failed one.
+    if RUN
+        .compare_exchange(
+            Run::Idle as u8,
+            first as u8,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        )
+        .is_err()
+    {
         return;
     }
-    if !social::signed_in() {
+    sidebar::show_run(first);
+    if first == Run::Starting {
         launch(game_dir);
         return;
     }
@@ -84,19 +130,20 @@ fn start(game_dir: Option<PathBuf>) {
                 if settled {
                     launch(game_dir);
                 } else {
-                    RUNNING.store(false, Ordering::SeqCst);
+                    set_run(Run::Idle);
                 }
             }),
             Err(error) => {
-                RUNNING.store(false, Ordering::SeqCst);
+                set_run(Run::Idle);
                 toast::failure(&error);
             }
         },
     );
 }
 
-/// `RUNNING` is set by now, every way out that starts no game clears it.
+/// `RUN` is set by now, every way out that starts no game sets it back to idle.
 fn launch(game_dir: Option<PathBuf>) {
+    set_run(Run::Starting);
     let game_args: Vec<String> = game_args().split_whitespace().map(str::to_owned).collect();
 
     backend::load(
@@ -136,16 +183,17 @@ fn launch(game_dir: Option<PathBuf>) {
         },
         |result| match result {
             Ok(Started::Running { child, label }) => {
-                toast::success(format!("started {label}"));
+                set_run(Run::Running);
+                toast::success(format!("Started {label}"));
                 social::game_started();
                 wait_for_exit(*child);
             }
             Ok(Started::NotFound { game }) => {
-                RUNNING.store(false, Ordering::SeqCst);
+                set_run(Run::Idle);
                 ask_for_folder(&game);
             }
             Err(error) => {
-                RUNNING.store(false, Ordering::SeqCst);
+                set_run(Run::Idle);
                 toast::failure(&error);
             }
         },
@@ -156,7 +204,7 @@ fn wait_for_exit(mut child: Child) {
     spawn(async move {
         let status = child.wait().await;
         on_main(move || {
-            RUNNING.store(false, Ordering::SeqCst);
+            set_run(Run::Idle);
             social::game_exited();
             match status {
                 Ok(status) if status.success() => log::info!("the game exited with {status}"),

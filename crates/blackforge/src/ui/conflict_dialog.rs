@@ -5,12 +5,15 @@ use blackforge_api::setup::Summary;
 use hilen::{
     OnceEvent,
     refs::Weak,
-    ui::{Button, Label, ModalView, Setup, Size, UIColor, VerticalAlignment, ViewData, view},
+    ui::{
+        Button, Label, ModalView, Setup, Size, UIColor, VerticalAlignment, ViewData, ViewTooltip,
+        view,
+    },
 };
 
 use crate::{
     cloud,
-    ui::{colors, style},
+    ui::{colors, style, time},
 };
 
 const PAD: f32 = 24.0;
@@ -51,11 +54,13 @@ impl ModalView<ConflictInput, bool> for ConflictDialog {
 
     fn setup_input(self: Weak<Self>, input: ConflictInput) {
         self.detail.set_text(format!(
-            "The cloud setup was saved from {} on {}. Using it here means: {}. The setup you do not pick stays in the history.",
+            "The cloud setup was saved from {} {}. Using it here means: {}. The setup you do not pick stays in the history.",
             cloud::machine_label(&input.machine),
-            cloud::when(input.created),
+            time::ago(input.created),
             input.summary
         ));
+        self.detail
+            .set_tooltip(format!("Saved {}", time::full(input.created)));
     }
 }
 

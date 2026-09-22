@@ -47,6 +47,10 @@ impl App for BlackforgeApp {
             // Mods and configs can change while the app is closed, from the
             // command line or a text editor.
             crate::social::share_profile();
+            // The sidebar badges say what waits before a page is opened.
+            crate::updates::check(false);
+            crate::ui::doctor_page::check_in_background();
+            crate::social::watch_requests();
         });
     }
 

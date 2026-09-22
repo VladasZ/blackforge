@@ -7,12 +7,15 @@ use hilen::{
     Event,
     login::GoogleLoginButton,
     refs::Weak,
-    ui::{Container, ImageView, Label, ModalView, Setup, ViewData, view},
+    ui::{Container, ImageView, Label, ModalView, Setup, ViewData, ViewFrame, ViewTooltip, view},
 };
 
 use crate::{
-    cloud, social,
-    ui::{colors, history_modal::HistoryModal, icon_label_button::IconLabelButton, style, toast},
+    cloud::{self, Status},
+    social,
+    ui::{
+        colors, history_modal::HistoryModal, icon_label_button::IconLabelButton, style, time, toast,
+    },
 };
 
 pub const HEIGHT: f32 = 60.0;
@@ -103,6 +106,9 @@ impl Setup for SyncPanel {
             .tapped
             .sub(|| HistoryModal::show_modally_with_input((), |_| {}));
 
+        // The room for the status text follows the width of the card.
+        self.size_changed().sub(move || self.show());
+
         PANEL.with(|slot| slot.set(self));
         self.show();
         cloud::schedule();
@@ -116,12 +122,30 @@ impl SyncPanel {
         self.history.set_hidden(!signed_in);
 
         if signed_in {
-            self.status.set_text(cloud::status().text());
+            let status = cloud::status();
+            self.status.set_text(status.text());
+            if let Status::Synced(at) = status {
+                self.status
+                    .set_tooltip(format!("Last synced {}", time::full(at)));
+            }
         } else {
             self.status
                 .set_text("Sign in to keep your mods and settings the same on every machine.");
         }
-        let text = self.status.content_size().width.clamp(self.usual, TEXT_MAX);
+        // The text gives way to the button, it is cut before the button
+        // leaves the card.
+        let button = if signed_in {
+            self.history.set("sync_history.svg", "History")
+        } else {
+            LOGIN_W
+        };
+        let room = (self.width() - TEXT_L - GAP - button - PAD).max(0.0);
+        let text = self
+            .status
+            .content_size()
+            .width
+            .clamp(self.usual, TEXT_MAX)
+            .min(room);
         self.status
             .place()
             .clear()
@@ -132,13 +156,12 @@ impl SyncPanel {
         // The one visible button stands right of the text block, centered on
         // the height of the whole card.
         let left = TEXT_L + text + GAP;
-        let history = self.history.set("sync_history.svg", "History");
         self.history
             .place()
             .clear()
             .l(left)
             .center_y()
-            .size(history, style::BUTTON_H);
+            .size(button, style::BUTTON_H);
         self.login
             .place()
             .clear()

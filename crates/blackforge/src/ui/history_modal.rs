@@ -7,13 +7,13 @@ use hilen::{
     refs::{Weak, weak_from_ref},
     ui::{
         Button, CellRegistry, Container, Label, ModalView, Question, Setup, Size, TableData,
-        TableView, TextAlignment, UIColor, View, ViewData, view,
+        TableView, TextAlignment, UIColor, View, ViewData, ViewTooltip, view,
     },
 };
 
 use crate::{
     backend, cloud,
-    ui::{colors, style, toast},
+    ui::{colors, style, time, toast},
 };
 
 const PAD: f32 = 24.0;
@@ -117,8 +117,8 @@ impl HistoryModal {
         };
         let revision = row.revision;
         Question::ask(format!(
-            "Restore revision {revision} from {}? It becomes the newest setup on every machine.",
-            cloud::when(row.created)
+            "Restore revision {revision}, saved {}? It becomes the newest setup on every machine.",
+            time::ago(row.created)
         ))
         .on_yes(move || self.restore(revision));
     }
@@ -228,9 +228,10 @@ impl HistoryCell {
         self.when.set_text(format!(
             "Revision {}, {}, {}",
             row.revision,
-            cloud::when(row.created),
+            time::ago(row.created),
             cloud::machine_label(&row.machine)
         ));
+        self.when.set_tooltip(time::full(row.created));
         self.detail
             .set_text(match (row.restored_from, row.applied) {
                 (Some(from), _) => format!("restored revision {from}: {}", row.summary),

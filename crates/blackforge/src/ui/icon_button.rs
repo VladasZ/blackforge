@@ -7,7 +7,10 @@ use hilen::{
     ui::{ImageView, Setup, ViewData, ViewTouch, view},
 };
 
-use crate::ui::{colors, hover};
+use crate::{
+    assets,
+    ui::{colors, hover},
+};
 
 pub const SIZE: f32 = 28.0;
 
@@ -16,6 +19,9 @@ const ICON: f32 = 16.0;
 #[view]
 pub struct IconButton {
     pub tapped: Event,
+
+    icon_name: String,
+    disabled: bool,
 
     #[init]
     icon: ImageView,
@@ -30,15 +36,17 @@ impl Setup for IconButton {
         self.icon.place().center().size(ICON, ICON);
 
         self.enable_touch();
-        self.touch()
-            .up_inside
-            .sub(self, move || self.tapped.trigger(()));
+        self.touch().up_inside.sub(self, move || {
+            if !self.disabled {
+                self.tapped.trigger(());
+            }
+        });
 
         hover::clickable(self);
 
         self.enable_hover();
         self.touch().hovered.val(self, move |hovered| {
-            if hovered {
+            if hovered && !self.disabled {
                 self.set_color(colors::NAV_HOVER_BG);
             } else {
                 self.set_color(colors::CLEAR);
@@ -48,7 +56,20 @@ impl Setup for IconButton {
 }
 
 impl IconButton {
-    pub fn set_icon(self: Weak<Self>, name: &str) {
+    pub fn set_icon(mut self: Weak<Self>, name: &str) {
+        name.clone_into(&mut self.icon_name);
         self.icon.set_image(name);
+    }
+
+    /// A disabled button draws its icon gray and ignores taps.
+    pub fn set_enabled(mut self: Weak<Self>, enabled: bool) {
+        self.disabled = !enabled;
+        if enabled {
+            self.icon.set_image(self.icon_name.as_str());
+        } else {
+            self.icon
+                .set_image(assets::tinted(&self.icon_name, colors::ICON.resolve()));
+            self.set_color(colors::CLEAR);
+        }
     }
 }

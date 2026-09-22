@@ -1,5 +1,6 @@
 //! Short messages that stack at the top of the window and leave on their
-//! own, so a result never blocks the page it reports on.
+//! own, so a result never blocks the page it reports on. An error stays
+//! longer and wraps, so its whole text can be read.
 
 use std::cell::Cell;
 
@@ -7,23 +8,28 @@ use hilen::{
     dispatch::{after, on_main},
     gm::color::Color,
     refs::{Own, Weak},
-    ui::{Container, Label, Setup, ViewData, ViewFrame, ViewSubviews, view},
+    ui::{Container, Label, Setup, VerticalAlignment, ViewData, ViewFrame, ViewSubviews, view},
 };
 
-use crate::ui::{colors, hint::describe, style};
+use crate::ui::{colors, hint::describe, names, style};
 
 /// A lower z draws in front and the engine keeps modals at 0.4, so a toast
 /// stays readable while a modal is still on screen.
 const Z: f32 = 0.35;
 
 const LIFETIME: f32 = 4.0;
-const HEIGHT: f32 = 36.0;
+const ERROR_LIFETIME: f32 = 10.0;
+const MIN_HEIGHT: f32 = 36.0;
+/// Above and below the text of a toast that wraps.
+const TEXT_PAD: f32 = 9.0;
 const GAP: f32 = 8.0;
 const TOP: f32 = 14.0;
 const PAD: f32 = 12.0;
 const ACCENT_WIDTH: f32 = 3.0;
 const TEXT_LEFT: f32 = PAD + ACCENT_WIDTH + 10.0;
 const MIN_WIDTH: f32 = 200.0;
+/// A longer text wraps into more lines.
+const MAX_WIDTH: f32 = 560.0;
 const SIDE_MARGIN: f32 = 16.0;
 
 thread_local! {
@@ -33,19 +39,19 @@ thread_local! {
 pub fn success(text: impl Into<String>) {
     let text = text.into();
     log::info!("toast: {text}");
-    show(text, colors::OK);
+    show(text, colors::OK, LIFETIME);
 }
 
 pub fn info(text: impl Into<String>) {
     let text = text.into();
     log::info!("toast: {text}");
-    show(text, colors::ACCENT);
+    show(text, colors::ACCENT, LIFETIME);
 }
 
 pub fn error(text: impl Into<String>) {
     let text = text.into();
     log::error!("toast: {text}");
-    show(text, colors::BAD);
+    show(text, colors::BAD, ERROR_LIFETIME);
 }
 
 /// A failed core operation, with the way out when the core knows one.
@@ -65,18 +71,24 @@ pub fn register(host: Weak<ToastHost>) {
     HOST.with(|slot| slot.set(host));
 }
 
-fn show(text: String, accent: Color) {
+/// Texts from the core start in lower case, a toast starts a sentence.
+fn show(text: String, accent: Color, lifetime: f32) {
     on_main(move || {
         let host = HOST.with(Cell::get);
         if host.is_ok() {
-            host.push(&text, accent);
+            host.push(&names::sentence(&text), accent, lifetime);
         }
     });
 }
 
+struct Toast {
+    card: Weak<Container>,
+    label: Weak<Label>,
+}
+
 #[view]
 pub struct ToastHost {
-    toasts: Vec<Weak<Container>>,
+    toasts: Vec<Toast>,
 }
 
 impl Setup for ToastHost {
@@ -87,7 +99,7 @@ impl Setup for ToastHost {
 }
 
 impl ToastHost {
-    fn push(mut self: Weak<Self>, text: &str, accent: Color) {
+    fn push(mut self: Weak<Self>, text: &str, accent: Color, lifetime: f32) {
         let card = self.add_view::<Container>();
         style::card(card);
 
@@ -97,25 +109,21 @@ impl ToastHost {
         accent_bar
             .place()
             .l(PAD)
-            .center_y()
-            .size(ACCENT_WIDTH, HEIGHT - 14.0);
+            .t(TEXT_PAD)
+            .b(TEXT_PAD)
+            .w(ACCENT_WIDTH);
 
         let label = card.add_view::<Label>();
         style::body(label);
         label.set_text(text).set_text_size(13);
+        label.set_multiline(true);
+        label.set_vertical_alignment(VerticalAlignment::Center);
         label.place().l(TEXT_LEFT).r(PAD).t(0).b(0);
 
-        card.set_frame((
-            0.0,
-            0.0,
-            (TEXT_LEFT + label.content_size().width + PAD).max(MIN_WIDTH),
-            HEIGHT,
-        ));
-
-        self.toasts.push(card);
+        self.toasts.push(Toast { card, label });
         self.relayout();
 
-        after(LIFETIME, move || {
+        after(lifetime, move || {
             if self.is_ok() && card.is_ok() {
                 self.dismiss(card);
             }
@@ -123,11 +131,13 @@ impl ToastHost {
     }
 
     fn dismiss(mut self: Weak<Self>, mut card: Weak<Container>) {
-        self.toasts.retain(|toast| toast.raw() != card.raw());
+        self.toasts.retain(|toast| toast.card.raw() != card.raw());
         card.remove_from_superview();
         self.relayout();
     }
 
+    /// Every toast is as wide as its text up to the most the window allows,
+    /// and as tall as the lines that width gives.
     fn relayout(self: Weak<Self>) {
         let host_width = self.frame().size.width;
 
@@ -136,12 +146,16 @@ impl ToastHost {
             return;
         }
 
+        let widest = MAX_WIDTH.min(host_width - SIDE_MARGIN * 2.0);
         let mut y = TOP;
-        for card in &self.toasts {
-            let width = card.frame().size.width.min(host_width - SIDE_MARGIN * 2.0);
+        for toast in &self.toasts {
+            let text = toast.label.content_size().width;
+            let width = (TEXT_LEFT + text + PAD).clamp(MIN_WIDTH.min(widest), widest);
+            let lines = toast.label.size_for_width(width - TEXT_LEFT - PAD).height;
+            let height = (lines + TEXT_PAD * 2.0).max(MIN_HEIGHT);
             let x = ((host_width - width) / 2.0).max(SIDE_MARGIN);
-            card.set_frame((x, y, width, HEIGHT));
-            y += HEIGHT + GAP;
+            toast.card.set_frame((x, y, width, height));
+            y += height + GAP;
         }
     }
 }

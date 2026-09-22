@@ -29,7 +29,7 @@ use tokio::sync::{Mutex, oneshot};
 
 use crate::{
     social,
-    ui::{status, toast},
+    ui::{busy::changed as buttons_changed, status, toast},
 };
 
 static FORGE: OnceLock<Forge> = OnceLock::new();
@@ -204,9 +204,10 @@ pub fn change<T, Fut>(
     Fut: Future<Output = Result<T>> + Send + 'static,
 {
     if CHANGING.swap(true, Ordering::SeqCst) {
-        toast::info("wait for the running operation to finish");
+        toast::info("Wait for the running operation to finish");
         return;
     }
+    buttons_changed(true);
     start(
         title,
         move |forge, progress| async move {
@@ -217,6 +218,7 @@ pub fn change<T, Fut>(
         },
         move |result| {
             CHANGING.store(false, Ordering::SeqCst);
+            buttons_changed(false);
             // Friends see the mods and the changed settings, so every change of
             // the profile is a reason to send them again.
             if result.is_ok() {

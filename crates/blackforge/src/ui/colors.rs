@@ -24,6 +24,8 @@ pub const PILL_BG: DynamicColor = DynamicColor::new(
     Color::hex("#14110d").with_alpha(0.07),
     Color::hex("#ffffff").with_alpha(0.09),
 );
+/// Opaque, an icon tint drops alpha. The same shade as `DIM` over the sidebar.
+pub const ICON: DynamicColor = DynamicColor::new(Color::hex("#85817c"), Color::hex("#908e89"));
 pub const NAV_HOVER_BG: DynamicColor = DynamicColor::new(
     Color::hex("#14110d").with_alpha(0.05),
     Color::hex("#ffffff").with_alpha(0.06),

@@ -9,17 +9,17 @@ use hilen::{
     refs::{Weak, weak_from_ref},
     ui::{
         Button, CellRegistry, Container, ImageView, Label, ModalView, Question, Setup, TableData,
-        TableView, TextAlignment, View, ViewData, ViewFrame, ViewSubviews, view,
+        TableView, TextAlignment, View, ViewData, ViewFrame, ViewSubviews, ViewTooltip, view,
     },
 };
 
 use crate::{
-    backend, cloud, social,
+    backend, social,
     ui::{
         colors, names,
         pill::{self, Pill},
         server_modal::ServerModal,
-        style, toast,
+        style, time, toast,
     },
 };
 
@@ -371,11 +371,12 @@ impl ServerCell {
         let server = &row.server;
         self.name.set_text(&server.name);
         self.owner.set_text(format!(
-            "by {}, {} mods, updated {}",
+            "By {}, {} mods, updated {}",
             server.owner,
             server.mods.len(),
-            cloud::when(server.updated)
+            time::ago(server.updated)
         ));
+        self.owner.set_tooltip(time::full(server.updated));
         self.show_mods(server, width);
 
         let ready = row.needs.is_empty();

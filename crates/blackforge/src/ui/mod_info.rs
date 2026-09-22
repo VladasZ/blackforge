@@ -13,7 +13,7 @@ use hilen::{
     system::open_url,
     ui::{
         Button, Container, Label, ModalView, Setup, Size, UIColor, VerticalAlignment, ViewData,
-        ViewSubviews, view,
+        ViewSubviews, ViewTooltip, view,
     },
 };
 
@@ -25,8 +25,8 @@ use crate::{
         mod_pills::Note,
         mods_page::lock_change_summary,
         names,
-        pill::{self, Pill},
-        style, toast,
+        pill::{self, Pill, compact},
+        style, time, toast,
     },
 };
 
@@ -83,6 +83,8 @@ pub struct ModDetails {
     id: String,
     newest: String,
     facts: String,
+    /// The full date of the newest release, for the tooltip of the facts.
+    updated: String,
     categories: String,
     description: String,
     needs: String,
@@ -129,14 +131,16 @@ impl ModDetails {
             _ => String::new(),
         };
 
+        let updated = time::parse(&package.updated);
         Self {
             id: package.id.to_string(),
             facts: format!(
-                "newest {newest}, updated {}, {} downloads, rating {}",
-                package.updated.get(..10).unwrap_or(&package.updated),
-                package.downloads,
+                "Newest {newest}, updated {}, {} downloads, rating {}",
+                updated.map_or_else(|| package.updated.clone(), time::ago),
+                compact(package.downloads),
                 package.rating
             ),
+            updated: updated.map_or_else(|| package.updated.clone(), time::full),
             categories: package.categories.join(", "),
             description: package.description.clone(),
             needs: shown.join("\n"),
@@ -206,6 +210,8 @@ impl ModalView<ModDetails, bool> for ModInfo {
         self.title.set_text(names::title(&details.id));
         self.author.set_text(names::author(&details.id));
         self.facts.set_text(&details.facts);
+        self.facts
+            .set_tooltip(format!("Updated {}", details.updated));
         self.categories.set_text(&details.categories);
         self.description.set_text(&details.description);
         self.needs.set_text(&details.needs);

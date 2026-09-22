@@ -12,6 +12,7 @@ mod launcher;
 mod social;
 mod ui;
 mod updater;
+mod updates;
 
 use hilen::App;
 

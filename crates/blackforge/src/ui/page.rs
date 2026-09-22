@@ -23,8 +23,8 @@ impl Page {
         Self::Settings,
     ];
 
-    /// Lucide line icons, <https://lucide.dev>, ISC licensed. The accent color
-    /// is baked into the files, an `ImageView` cannot tint.
+    /// Lucide line icons, <https://lucide.dev>, ISC licensed. The strokes are
+    /// black in the files, the sidebar tints them per state.
     pub fn icon(self) -> &'static str {
         match self {
             Self::Mods => "nav_mods.svg",

@@ -1,9 +1,10 @@
 //! The mods of the active profile: enable, disable, remove and update.
 
-use std::collections::HashMap;
+use std::cell::Cell;
 
 use blackforge_core::{forge::LockChange, install::SyncReport};
 use hilen::{
+    dispatch::after,
     refs::{Weak, weak_from_ref},
     ui::{
         Button, CellRegistry, Container, Label, Question, Setup, Switch, TableData, TableView,
@@ -14,15 +15,16 @@ use hilen::{
 use crate::{
     backend,
     ui::{
-        colors, hover,
+        busy, colors, hover,
         icon_button::{self, IconButton},
         mod_icon::ModIcon,
         mod_info::ModInfo,
         mod_pills::{ModPills, Note},
         names, pill, style,
         sync_panel::{self, SyncPanel},
-        toast,
+        time, toast,
     },
+    updates::{self, Newer},
 };
 
 /// The mods header and the table sit this far under the top of the page.
@@ -37,6 +39,23 @@ const ICON: f32 = 36.0;
 const TEXT_LEFT: f32 = 4.0 + ICON + 12.0;
 /// The update button and the newer note end left of the switch.
 const RIGHT_OF_SWITCH: f32 = 16.0 + icon_button::SIZE + 16.0 + 44.0 + 16.0;
+const CHECK_W: f32 = 140.0;
+const UPDATE_W: f32 = 100.0;
+const HEADER_GAP: f32 = 8.0;
+/// The age of the last check in the subtitle grows while the page is open.
+const AGE_SECONDS: f32 = 60.0;
+
+thread_local! {
+    static PAGE: Cell<Weak<ModsPage>> = const { Cell::new(Weak::const_default()) };
+}
+
+/// The update state changed. Nothing happens while another page is open.
+pub fn updates_changed() {
+    let page = PAGE.with(Cell::get);
+    if page.is_ok() {
+        page.show_updates();
+    }
+}
 
 #[derive(Clone, Debug)]
 struct ModRow {
@@ -49,15 +68,6 @@ struct ModRow {
     /// dependency leaves by itself when nothing needs it.
     direct: bool,
     enabled: bool,
-}
-
-/// A newer version of a locked mod.
-#[derive(Clone, Debug)]
-struct Newer {
-    version: String,
-    /// Held at its version, so update all leaves it and the row offers no
-    /// update of its own.
-    pinned: bool,
 }
 
 pub fn lock_change_summary(change: &LockChange) -> String {
@@ -91,10 +101,9 @@ pub fn sync_summary(report: &SyncReport) -> String {
 #[view]
 pub struct ModsPage {
     rows: Vec<ModRow>,
-    /// The newest version of every locked mod that has one, by id.
-    newest: HashMap<String, Newer>,
-    /// A check for updates ran, so `newest` is complete.
-    checked: bool,
+    /// The game, the target and the count of mods, the first half of the
+    /// subtitle.
+    counts: String,
 
     #[init]
     title: Label,
@@ -116,27 +125,30 @@ impl Setup for ModsPage {
             .size(300, 30);
 
         style::dim(self.subtitle);
+        self.subtitle.set_ellipsize(true);
         self.subtitle
             .place()
             .t(MODS_T + 56.0)
             .l(style::PAGE_PAD)
-            .size(500, 16);
+            .r(style::PAGE_PAD)
+            .h(16);
 
         style::ghost(self.update, "Update all");
         self.update
             .place()
             .t(MODS_T + 28.0)
             .r(style::PAGE_PAD)
-            .size(100, style::BUTTON_H);
+            .size(UPDATE_W, style::BUTTON_H);
         self.update.on_tap(move || self.update_all());
+        busy::track(self.update);
 
         style::ghost(self.check, "Check for updates");
         self.check
             .place()
             .t(MODS_T + 28.0)
-            .r(style::PAGE_PAD + 108.0)
-            .size(140, style::BUTTON_H);
-        self.check.on_tap(move || self.check_updates());
+            .r(style::PAGE_PAD + UPDATE_W + HEADER_GAP)
+            .size(CHECK_W, style::BUTTON_H);
+        self.check.on_tap(|| updates::check(true));
 
         self.cloud
             .place()
@@ -148,7 +160,7 @@ impl Setup for ModsPage {
 
         style::dim(self.empty);
         self.empty
-            .set_text("no mods yet, add some on the Browse page");
+            .set_text("No mods yet, add some on the Browse page");
         self.empty.set_alignment(TextAlignment::Center);
         self.empty.set_hidden(true);
         self.empty
@@ -167,6 +179,9 @@ impl Setup for ModsPage {
             .r(style::PAGE_PAD)
             .b(0);
 
+        PAGE.with(|slot| slot.set(self));
+        self.show_updates();
+        self.age();
         self.reload();
     }
 }
@@ -180,9 +195,9 @@ impl ModsPage {
                 let manifest = profile.manifest().await?;
                 let lock = profile.lock().await?;
                 let broken = backend::broken_known(forge, &progress).await;
-                let subtitle = format!(
+                let counts = format!(
                     "{} {}, {} mods",
-                    manifest.game,
+                    names::sentence(&manifest.game),
                     manifest.target,
                     lock.packages.len()
                 );
@@ -201,18 +216,18 @@ impl ModsPage {
                         }
                     })
                     .collect();
-                Ok((subtitle, rows))
+                Ok((counts, rows))
             },
             move |result: anyhow::Result<(String, Vec<ModRow>)>| {
                 if !self.is_ok() {
                     return;
                 }
                 match result {
-                    Ok((subtitle, rows)) => {
-                        self.subtitle.set_text(subtitle);
+                    Ok((counts, rows)) => {
+                        self.counts = counts;
                         self.empty.set_hidden(!rows.is_empty());
                         self.rows = rows;
-                        self.table.reload_data();
+                        self.show_updates();
                     }
                     Err(error) => toast::failure(&error),
                 }
@@ -220,7 +235,51 @@ impl ModsPage {
         );
     }
 
+    /// Reads the age of the last check again once a minute while the page
+    /// lives, the shell drops the page on a switch.
+    fn age(self: Weak<Self>) {
+        after(AGE_SECONDS, move || {
+            if self.is_ok() {
+                self.show_subtitle();
+                self.age();
+            }
+        });
+    }
+
+    /// The subtitle, the update all button and the rows follow the update
+    /// state the app keeps for the session.
+    fn show_updates(mut self: Weak<Self>) {
+        self.show_subtitle();
+        self.refresh_update_button();
+        self.table.reload_data();
+    }
+
+    fn show_subtitle(self: Weak<Self>) {
+        let state = updates::get();
+        let check = if state.checking {
+            "looking for updates".to_owned()
+        } else if let Some(checked) = state.checked {
+            let found = match state.movable() {
+                0 => "all up to date".to_owned(),
+                1 => "1 update".to_owned(),
+                count => format!("{count} updates"),
+            };
+            self.subtitle
+                .set_tooltip(format!("Checked {}", time::full(checked)));
+            format!("{found}, checked {}", time::ago(checked))
+        } else {
+            String::new()
+        };
+        let text = match (self.counts.is_empty(), check.is_empty()) {
+            (true, _) => names::sentence(&check),
+            (false, true) => self.counts.clone(),
+            (false, false) => format!("{}, {check}", self.counts),
+        };
+        self.subtitle.set_text(text);
+    }
+
     fn update_all(self: Weak<Self>) {
+        busy::press(self.update, "Updating...");
         backend::change(
             "updating the mods",
             |forge, progress| async move {
@@ -231,10 +290,8 @@ impl ModsPage {
                 Ok(change)
             },
             move |result: anyhow::Result<LockChange>| {
-                if result.is_ok() && self.is_ok() {
-                    let mut page = self;
-                    page.newest.retain(|_, newer| newer.pinned);
-                    page.refresh_update_button();
+                if result.is_ok() {
+                    updates::all_moved();
                 }
                 self.report(result.map(|change| lock_change_summary(&change)));
             },
@@ -242,11 +299,12 @@ impl ModsPage {
     }
 
     /// Moves one mod to its newest version, the others stay where they are.
-    fn update_mod(self: Weak<Self>, index: usize) {
+    fn update_mod(self: Weak<Self>, index: usize, button: Weak<Button>) {
         let Some(row) = self.rows.get(index) else {
             return;
         };
         let id = row.id.clone();
+        busy::press(button, "Updating...");
         backend::change(
             "updating the mod",
             move |forge, progress| async move {
@@ -258,12 +316,8 @@ impl ModsPage {
                 Ok((id, change))
             },
             move |result: anyhow::Result<(String, LockChange)>| {
-                if let Ok((id, _)) = &result
-                    && self.is_ok()
-                {
-                    let mut page = self;
-                    page.newest.remove(id);
-                    page.refresh_update_button();
+                if let Ok((id, _)) = &result {
+                    updates::moved(id);
                 }
                 self.report(result.map(|(_, change)| lock_change_summary(&change)));
             },
@@ -272,62 +326,19 @@ impl ModsPage {
 
     /// Update all names how many mods it moves once a check ran, and is off
     /// when there is nothing to move. Pinned mods do not count, it leaves them.
+    /// It is off during a change too, then the busy buttons decide.
     fn refresh_update_button(self: Weak<Self>) {
         let mut update = self.update;
-        if !self.checked {
-            update.set_text("Update all");
-            update.set_enabled(true);
-            return;
-        }
-        let count = self.newest.values().filter(|newer| !newer.pinned).count();
+        let state = updates::get();
+        let count = state.movable();
         if count == 0 {
             update.set_text("Update all");
         } else {
             update.set_text(format!("Update {count}"));
         }
-        update.set_enabled(count > 0);
-    }
-
-    fn check_updates(mut self: Weak<Self>) {
-        backend::load(
-            "looking for newer versions",
-            |forge, progress| async move {
-                let profile = backend::profile(forge, &progress).await?;
-                let outdated = forge.outdated(&profile, &progress).await?;
-                backend::forget_index().await;
-                Ok(outdated)
-            },
-            move |result| {
-                if !self.is_ok() {
-                    return;
-                }
-                match result {
-                    Ok(outdated) => {
-                        if outdated.is_empty() {
-                            toast::success("every mod is on its newest version");
-                        } else {
-                            toast::info(format!("{} mods have a newer version", outdated.len()));
-                        }
-                        self.newest = outdated
-                            .into_iter()
-                            .map(|entry| {
-                                (
-                                    entry.id.to_string(),
-                                    Newer {
-                                        version: entry.latest.to_string(),
-                                        pinned: entry.pinned,
-                                    },
-                                )
-                            })
-                            .collect();
-                        self.checked = true;
-                        self.refresh_update_button();
-                        self.table.reload_data();
-                    }
-                    Err(error) => toast::failure(&error),
-                }
-            },
-        );
+        if !backend::busy() {
+            update.set_enabled(state.checked.is_none() || count > 0);
+        }
     }
 
     fn remove_mod(self: Weak<Self>, index: usize) {
@@ -342,9 +353,14 @@ impl ModsPage {
                     let profile = backend::profile(forge, &progress).await?;
                     let (id, _) = forge.remove(&profile, &id).await?;
                     forge.sync(&profile, &progress).await?;
-                    Ok(format!("removed {id}"))
+                    Ok(id)
                 },
-                move |result| self.report(result),
+                move |result| {
+                    if let Ok(id) = &result {
+                        updates::moved(&id.to_string());
+                    }
+                    self.report(result.map(|id| format!("Removed {id}")));
+                },
             );
         });
     }
@@ -366,7 +382,7 @@ impl ModsPage {
                 forge.sync(&profile, &progress).await?;
                 Ok(format!(
                     "{} {id}",
-                    if enabled { "enabled" } else { "disabled" }
+                    if enabled { "Enabled" } else { "Disabled" }
                 ))
             },
             move |result| self.report(result),
@@ -398,7 +414,8 @@ impl TableData for ModsPage {
     fn setup_cell(&mut self, index: usize, registry: &mut CellRegistry) -> Weak<dyn View> {
         let cell = registry.cell::<ModCell>();
         let row = &self.rows[index];
-        cell.set_row(index, weak_from_ref(self), row, self.newest.get(&row.id));
+        let newest = updates::get().newest.get(&row.id).cloned();
+        cell.set_row(index, weak_from_ref(self), row, newest.as_ref());
         cell
     }
 
@@ -459,12 +476,13 @@ impl Setup for ModCell {
             .place()
             .r(RIGHT_OF_SWITCH)
             .center_y()
-            .size(130, style::BUTTON_H);
+            .size(150, style::BUTTON_H);
         self.update.on_tap(move || {
             if self.page.is_ok() {
-                self.page.update_mod(self.index);
+                self.page.update_mod(self.index, self.update);
             }
         });
+        busy::track(self.update);
 
         self.enabled
             .place()
@@ -489,6 +507,7 @@ impl Setup for ModCell {
                 self.page.remove_mod(self.index);
             }
         });
+        busy::track_icon(self.remove);
 
         // The wash says the row can be clicked, the click opens the details.
         hover::row(self);

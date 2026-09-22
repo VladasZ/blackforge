@@ -283,6 +283,7 @@ impl FriendsPage {
     }
 
     fn set_friends(mut self: Weak<Self>, friends: Friends) {
+        social::show_requests(friends.incoming.len());
         let incoming = friends.incoming.into_iter().map(Row::Incoming);
         let accepted = friends.friends.into_iter().map(|friend| Row::Friend {
             username: friend.username,
@@ -374,7 +375,7 @@ impl FriendsPage {
             if let Err(error) = result {
                 toast::failure(&error);
             }
-            social::forget_upload();
+            social::signed_out();
             if self.is_ok() {
                 self.load();
             }
@@ -413,7 +414,7 @@ impl FriendsPage {
         if let Err(error) = SessionStore::clear() {
             toast::failure(&error);
         }
-        social::forget_upload();
+        social::signed_out();
         toast::info("the session ended, sign in again");
         self.show(State::SignedOut);
     }

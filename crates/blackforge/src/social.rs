@@ -17,17 +17,22 @@ use blackforge_core::{
     },
 };
 use hilen::{
-    dispatch::{sleep, spawn},
+    dispatch::{on_main, sleep, spawn},
     login::GoogleLogin,
     store::OnDisk,
 };
 use serde_json::to_string;
 
-use crate::backend;
+use crate::{
+    backend,
+    ui::{nav_item::Badge, page::Page, sidebar},
+};
 
 /// The app says it is still in game this often. The server reads two missed
 /// reports as not in game.
 const REPORT_SECONDS: f32 = 60.0;
+/// Friend requests are asked for this often while the app runs.
+const REQUESTS_SECONDS: f32 = 300.0;
 
 /// The JSON of the last profile the server took, so an equal one is not sent
 /// again. It is a file because most starts of the app change nothing.
@@ -53,11 +58,13 @@ pub fn client() -> Result<SocialClient> {
 }
 
 /// After a sign out the next account starts clean, its first upload must not
-/// be skipped because the account before sent the same mods.
-pub fn forget_upload() {
+/// be skipped because the account before sent the same mods, and the badge
+/// of friend requests goes away.
+pub fn signed_out() {
     if LAST_UPLOAD.get().is_some() {
         LAST_UPLOAD.reset();
     }
+    show_requests(0);
 }
 
 /// Sends the mods and the changed settings when they differ from the last
@@ -131,4 +138,40 @@ async fn report(in_game: bool) {
     if let Err(error) = sent {
         log::warn!("the in game status was not sent: {error:#}");
     }
+}
+
+/// Asks for friend requests now and then while signed in, so the sidebar
+/// counts the ones that wait also while the Friends page is closed. Runs for
+/// the whole session, a signed out round only clears the badge.
+pub fn watch_requests() {
+    spawn(async {
+        loop {
+            let waiting = if signed_in() {
+                match client() {
+                    Ok(client) => match client.friends().await {
+                        Ok(friends) => Some(friends.incoming.len()),
+                        Err(error) => {
+                            log::warn!("the friend requests did not load: {error:#}");
+                            None
+                        }
+                    },
+                    Err(error) => {
+                        log::warn!("no client for the friend requests: {error:#}");
+                        None
+                    }
+                }
+            } else {
+                Some(0)
+            };
+            if let Some(waiting) = waiting {
+                on_main(move || show_requests(waiting));
+            }
+            sleep(REQUESTS_SECONDS).await;
+        }
+    });
+}
+
+/// The count of friend requests that wait for me, on the sidebar entry.
+pub fn show_requests(waiting: usize) {
+    sidebar::set_badge(Page::Friends, Badge::Count(waiting));
 }
