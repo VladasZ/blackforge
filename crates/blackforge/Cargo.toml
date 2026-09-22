@@ -24,7 +24,9 @@ gethostname = { workspace = true }
 hilen = { workspace = true, features = ["login"] }
 image = { workspace = true }
 log = { workspace = true }
+regex = { workspace = true }
 serde_json = { workspace = true }
+timeago = { workspace = true }
 tokio = { workspace = true }
 
 [build-dependencies]

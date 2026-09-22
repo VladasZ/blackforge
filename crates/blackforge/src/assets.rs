@@ -1,4 +1,7 @@
+use std::sync::LazyLock;
+
 use hilen::{gm::color::Color, refs::manage::DataManager, ui::Image};
+use regex::Regex;
 
 // Embed the interface images so installers and updates carry one executable.
 const IMAGES: [(&str, &[u8]); 24] = [
@@ -113,27 +116,12 @@ pub fn tinted(name: &str, tint: Color) -> String {
     if Image::get_existing(&tinted).is_none()
         && let Some((_, bytes)) = IMAGES.iter().find(|(image, _)| *image == name)
     {
-        let svg = recolor(&String::from_utf8_lossy(bytes), &hex);
+        let source = String::from_utf8_lossy(bytes);
+        let svg = HEX_COLOR.replace_all(&source, format!("\"{hex}\""));
         Image::load(svg.as_bytes(), &tinted);
     }
     tinted
 }
 
-/// Every `"#rrggbb"` attribute value of `svg` replaced with `hex`.
-fn recolor(svg: &str, hex: &str) -> String {
-    let mut out = String::with_capacity(svg.len());
-    let mut rest = svg;
-    while let Some(start) = rest.find("\"#") {
-        let color = &rest[start + 1..];
-        let end = color.find('"').unwrap_or(color.len());
-        out.push_str(&rest[..=start]);
-        if end == 7 {
-            out.push_str(hex);
-        } else {
-            out.push_str(&color[..end]);
-        }
-        rest = &color[end..];
-    }
-    out.push_str(rest);
-    out
-}
+static HEX_COLOR: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r##""#[0-9a-fA-F]{6}""##).expect("the pattern is valid"));
