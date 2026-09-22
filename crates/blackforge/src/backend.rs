@@ -15,6 +15,7 @@ use std::{
 use anyhow::Result;
 use blackforge_core::{
     Error,
+    broken::Broken,
     cloud::recover,
     forge::{DEFAULT_PROFILE, Forge},
     game::{Target, VALHEIM},
@@ -39,6 +40,13 @@ struct KeptIndex {
 }
 
 static INDEX: Mutex<Option<KeptIndex>> = Mutex::const_new(None);
+
+struct KeptBroken {
+    loaded: Instant,
+    broken: Arc<Broken>,
+}
+
+static BROKEN: Mutex<Option<KeptBroken>> = Mutex::const_new(None);
 
 /// Held while the default profile is looked up or made, so two operations
 /// that start together on a fresh machine do not both try to create it.
@@ -107,6 +115,38 @@ pub async fn index(forge: &Forge, progress: &Progress) -> Result<Arc<PackageInde
 /// fresh list, so the next reader sees it too.
 pub async fn forget_index() {
     *INDEX.lock().await = None;
+}
+
+/// The mods the server lists as broken on the game version of this machine.
+/// One copy stays in memory for an hour, like the package list.
+pub async fn broken(forge: &Forge, progress: &Progress) -> Result<Arc<Broken>> {
+    if let Some(kept) = BROKEN.lock().await.as_ref()
+        && kept.loaded.elapsed() < FRESH_ENOUGH
+    {
+        return Ok(kept.broken.clone());
+    }
+
+    let profile = profile(forge, progress).await?;
+    let game = forge.game(&profile.manifest().await?).await?;
+    let broken = Arc::new(forge.broken(&game).await?);
+    *BROKEN.lock().await = Some(KeptBroken {
+        loaded: Instant::now(),
+        broken: broken.clone(),
+    });
+    Ok(broken)
+}
+
+/// The same for a page that has to list mods with or without the network.
+/// When the list cannot be had, no mod is flagged, the log says why, and
+/// the Doctor page shows the reason to the user.
+pub async fn broken_known(forge: &Forge, progress: &Progress) -> Arc<Broken> {
+    match broken(forge, progress).await {
+        Ok(broken) => broken,
+        Err(error) => {
+            log::warn!("no broken flags, the list did not load: {error:#}");
+            Arc::new(Broken::default())
+        }
+    }
 }
 
 /// The description of every named mod that the package list knows, by id.

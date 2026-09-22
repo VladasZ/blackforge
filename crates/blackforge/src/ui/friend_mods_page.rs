@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 
 use blackforge_api::SharedProfile;
 use blackforge_core::{
+    broken::Broken,
     config::{self, package_of},
     ident::PackageId,
     manifest::VersionReq,
@@ -51,6 +52,8 @@ struct ModRow {
     /// Off in the friend's profile.
     enabled: bool,
     installed: bool,
+    /// The server lists it as broken on the game version of this machine.
+    broken: bool,
     /// Empty when the package list does not know the mod.
     description: String,
     /// The friend's shared config files of this mod that I have as well.
@@ -142,8 +145,16 @@ impl FriendModsPage {
                     .filter_map(|shared| shared.id.parse().ok())
                     .collect();
                 let descriptions = backend::descriptions(forge, &progress, ids.iter()).await;
+                let broken = backend::broken_known(forge, &progress).await;
 
-                let rows = rows_of(&shared, &ids, &installed, &my_configs, &descriptions);
+                let rows = rows_of(
+                    &shared,
+                    &ids,
+                    &installed,
+                    &my_configs,
+                    &descriptions,
+                    &broken,
+                );
                 Ok((shared, rows))
             },
             move |result| {
@@ -300,6 +311,7 @@ fn rows_of(
     installed: &HashSet<String>,
     my_configs: &HashSet<String>,
     descriptions: &HashMap<String, String>,
+    broken: &Broken,
 ) -> Vec<ModRow> {
     shared
         .mods
@@ -322,6 +334,10 @@ fn rows_of(
                 version: shared_mod.version.clone(),
                 enabled: shared_mod.enabled,
                 installed,
+                broken: shared_mod
+                    .id
+                    .parse()
+                    .is_ok_and(|id: PackageId| broken.contains(&id)),
                 description: descriptions
                     .get(&shared_mod.id)
                     .cloned()
@@ -462,7 +478,7 @@ impl ModCell {
         } else {
             Note::Disabled
         };
-        let pills = self.pills.set(&row.version, note);
+        let pills = self.pills.set(&row.version, note, row.broken);
         self.pills
             .place()
             .clear()

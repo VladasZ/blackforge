@@ -106,6 +106,18 @@ fn tree_of(entries: &[String]) -> Dir {
     root
 }
 
+/// The install routes that are not tracked, the config folders. A file
+/// there belongs to the user once written.
+pub fn untracked_routes(game: &GameDef) -> Vec<String> {
+    let mut rules = Vec::new();
+    flatten(&game.install_rules, None, &mut rules);
+    rules
+        .into_iter()
+        .filter(|rule| rule.tracking == TrackingMethod::None)
+        .map(|rule| rule.route)
+        .collect()
+}
+
 pub fn plan_mod(game: &GameDef, id: &PackageId, entries: &[String]) -> Result<Vec<Placement>> {
     let mut rules = Vec::new();
     flatten(&game.install_rules, None, &mut rules);

@@ -5,6 +5,7 @@
 //! can both sit on top of it. [`forge::Forge`] is the entry point.
 
 pub mod achievements;
+pub mod broken;
 pub mod cloud;
 pub mod config;
 pub mod deploy;

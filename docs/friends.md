@@ -57,6 +57,15 @@ From `backend/server/src/routes.rs`, every one wants `Authorization: Bearer <ses
   friend gets the same 404 as for a name that does not exist.
 - `POST /api/status` is the in game report.
 
+From `backend/server/src/broken.rs`, the one route with no login:
+
+- `GET /api/broken` is the list of mods known to break the game, kept by hand in
+  `backend/server/broken.toml`. Per game it holds the releases with their days and the
+  broken packages with the game version each broke on. The app turns the update time of
+  the Steam manifest into a game version through the release days, and flags a listed
+  package in every version from that game version on. A bad file stops the server at
+  start, and a test checks every row.
+
 From `backend/server/src/site.rs`, the jobs the old nginx config did: the landing page
 from the embedded `web/dist`, `manifest.json`, `updater.json` and the download click
 reports passed on to studio, and a redirect of everything else under `/download/` to

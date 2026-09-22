@@ -1,13 +1,15 @@
 //! Checks everything `run` depends on and says what to do about each problem.
 
-use std::path::Path;
+use std::{path::Path, time::SystemTime};
 
 use tokio::process::Command;
 
 use crate::{
+    broken::{Broken, load_list},
     error::Result,
     fix::Fix,
     forge::Forge,
+    game::GameDef,
     install::{Installed, wanted},
     launch::{Os, preloader_path},
     profile::Profile,
@@ -99,8 +101,10 @@ impl Forge {
         let manifest = profile.manifest().await?;
         let game = self.game(&manifest).await?;
         let os = Os::current()?;
+        let mut updated = None;
         match self.locate_game(&game, None).await {
             Ok(install) => {
+                updated = install.updated;
                 checks.push(Check::new(
                     "game",
                     Status::Ok,
@@ -125,6 +129,7 @@ impl Forge {
         }
 
         checks.push(self.sync_check(profile).await?);
+        checks.extend(self.broken_checks(profile, &game, updated).await?);
         let loader_ready = exists(&preloader_path(profile.dir())).await;
         checks.push(if loader_ready {
             Check::new("mod loader", Status::Ok, "BepInEx is installed")
@@ -150,6 +155,63 @@ impl Forge {
         }
         if matches!(os, Os::MacArm | Os::MacIntel) && loader_ready {
             checks.push(quarantine_check(profile).await);
+        }
+        Ok(checks)
+    }
+
+    /// One warning per mod of the lock that the server lists as broken on
+    /// the game version of this machine. A list that cannot be read or
+    /// understood is a warning too, not a failed doctor.
+    async fn broken_checks(
+        &self,
+        profile: &Profile,
+        game: &GameDef,
+        updated: Option<SystemTime>,
+    ) -> Result<Vec<Check>> {
+        let resolved = load_list(self.client(), self.data())
+            .await
+            .and_then(|list| Broken::resolve(&list, &game.label, updated));
+        let broken = match resolved {
+            Ok(broken) => broken,
+            Err(error) => {
+                return Ok(vec![Check::new(
+                    "broken mods",
+                    Status::Warning,
+                    format!("the list of broken mods could not be read: {error}"),
+                )]);
+            }
+        };
+        let Some(version) = broken.version() else {
+            return Ok(vec![Check::new(
+                "broken mods",
+                Status::Ok,
+                "the game version is not known, so no mod is flagged",
+            )]);
+        };
+
+        let checks: Vec<Check> = profile
+            .lock()
+            .await?
+            .packages
+            .iter()
+            .filter_map(|package| {
+                let since = broken.since(&package.id)?;
+                Some(Check::new(
+                    "broken mod",
+                    Status::Warning,
+                    format!(
+                        "{} broke on {} {since}, this game is {version}",
+                        package.id, game.display_name
+                    ),
+                ))
+            })
+            .collect();
+        if checks.is_empty() {
+            return Ok(vec![Check::new(
+                "broken mods",
+                Status::Ok,
+                format!("none known for {} {version}", game.display_name),
+            )]);
         }
         Ok(checks)
     }

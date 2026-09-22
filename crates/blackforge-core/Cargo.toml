@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 base64 = { workspace = true }
 blackforge-api = { workspace = true }
+chrono = { workspace = true }
 dirs = { workspace = true }
 flate2 = { workspace = true }
 futures-util = { workspace = true }

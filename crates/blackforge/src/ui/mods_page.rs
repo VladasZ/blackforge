@@ -42,6 +42,8 @@ struct ModRow {
     id: String,
     version: String,
     note: Note,
+    /// The server lists it as broken on this game version.
+    broken: bool,
     /// The user asked for it, so it can be disabled and removed. A
     /// dependency leaves by itself when nothing needs it.
     direct: bool,
@@ -173,6 +175,7 @@ impl ModsPage {
                 let profile = backend::profile(forge, &progress).await?;
                 let manifest = profile.manifest().await?;
                 let lock = profile.lock().await?;
+                let broken = backend::broken_known(forge, &progress).await;
                 let subtitle = format!(
                     "{} {}, {} mods",
                     manifest.game,
@@ -188,6 +191,7 @@ impl ModsPage {
                             id: package.id.to_string(),
                             version: package.version.to_string(),
                             note: Note::of(spec),
+                            broken: broken.contains(&package.id),
                             direct: spec.is_some(),
                             enabled: spec.is_none_or(|spec| spec.enabled),
                         }
@@ -413,7 +417,7 @@ impl ModCell {
             .set_text_color(if row.enabled { colors::FG } else { colors::DIM });
 
         // The pills sit under the name, as wide as their text.
-        let pills = self.pills.set(&row.version, row.note);
+        let pills = self.pills.set(&row.version, row.note, row.broken);
         self.pills
             .place()
             .clear()

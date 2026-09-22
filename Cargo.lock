@@ -612,6 +612,7 @@ version = "0.1.11"
 dependencies = [
  "base64 0.23.1",
  "blackforge-api",
+ "chrono",
  "dirs 7.0.0",
  "flate2",
  "futures-util",
@@ -634,12 +635,14 @@ version = "0.1.11"
 dependencies = [
  "anyhow",
  "blackforge-api",
+ "chrono",
  "hilen-server",
  "reqwest 0.13.5",
  "rust-embed",
  "serde_json",
  "sqlx",
  "tokio",
+ "toml",
 ]
 
 [[package]]

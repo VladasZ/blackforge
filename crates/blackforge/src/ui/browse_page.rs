@@ -73,6 +73,8 @@ struct Hit {
     page_url: String,
     installed: bool,
     deprecated: bool,
+    /// The server lists it as broken on this game version.
+    broken: bool,
 }
 
 struct Found {
@@ -154,6 +156,7 @@ impl BrowsePage {
             "searching Thunderstore",
             move |forge, progress| async move {
                 let index = backend::index(forge, &progress).await?;
+                let broken = backend::broken_known(forge, &progress).await;
                 let profile = backend::profile(forge, &progress).await?;
                 let installed: HashSet<String> = profile
                     .lock()
@@ -184,6 +187,7 @@ impl BrowsePage {
                             description: backend::summary(package),
                             page_url: package.package_url.clone(),
                             deprecated: package.deprecated,
+                            broken: broken.contains(&package.id),
                         }
                     })
                     .collect();
@@ -298,6 +302,7 @@ struct HitCell {
     version: Pill,
     downloads: Pill,
     deprecated: Pill,
+    broken: Pill,
     installed: Label,
     open_page: IconButton,
     add: Button,
@@ -312,6 +317,7 @@ impl Setup for HitCell {
         self.name.set_ellipsize(true);
 
         self.deprecated.warn();
+        self.broken.warn();
 
         // The whole row width and 2 lines. Thunderstore caps a description at
         // 250 characters, so at a normal window size nothing is cut. A click
@@ -411,7 +417,18 @@ impl HitCell {
                 .size(deprecated, pill::HEIGHT);
             right += deprecated + PILL_GAP;
         }
-        // The name ends where the pills start, a row has 2 or 3 of them.
+        self.broken.set_hidden(!hit.broken);
+        if hit.broken {
+            let broken = self.broken.set("pill_broken.svg", "broken");
+            self.broken
+                .place()
+                .clear()
+                .r(right)
+                .t(TOP_LINE)
+                .size(broken, pill::HEIGHT);
+            right += broken + PILL_GAP;
+        }
+        // The name ends where the pills start, a row has 2 to 4 of them.
         self.name
             .place()
             .clear()

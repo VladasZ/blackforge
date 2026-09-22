@@ -11,8 +11,8 @@ use tokio::task::spawn_blocking;
 use crate::{
     error::{IoContext, Result},
     forge::Forge,
-    game::{GameDef, InstallRule, TrackingMethod},
-    install::{SyncReport, ZipCache, sync_tree, wanted},
+    game::GameDef,
+    install::{SyncReport, ZipCache, rules::untracked_routes, sync_tree, wanted},
     profile::Profile,
     progress::Progress,
     util::walk_files,
@@ -68,31 +68,14 @@ impl Forge {
     }
 }
 
-/// The config folders are the install routes that are not tracked.
-fn config_routes(rules: &[InstallRule], parent: Option<&str>, out: &mut Vec<String>) {
-    for rule in rules {
-        let route = parent.map_or_else(
-            || rule.route.clone(),
-            |parent| format!("{parent}/{}", rule.route),
-        );
-        if rule.tracking_method == TrackingMethod::None {
-            out.push(route.clone());
-        }
-        config_routes(&rule.sub_routes, Some(&route), out);
-    }
-}
-
 fn copy_configs(
     game: &GameDef,
     source: &Path,
     target: &Path,
     overwrite: bool,
 ) -> Result<(Vec<String>, Vec<String>)> {
-    let mut routes = Vec::new();
-    config_routes(&game.install_rules, None, &mut routes);
-
     let (mut written, mut kept) = (Vec::new(), Vec::new());
-    for route in routes {
+    for route in untracked_routes(game) {
         let join = |root: &Path| {
             route
                 .split('/')

@@ -6,11 +6,12 @@ use std::{path::PathBuf, time::Duration};
 use semver::Version;
 
 use crate::{
+    broken::{Broken, load_list},
     error::{Error, Result},
     game::{GameDef, GameInstall, Schema, Target, VALHEIM, locate},
     http::Client,
     ident::{PackageId, VersionedId},
-    install::{SyncReport, ZipCache, sync_tree, wanted},
+    install::{SyncReport, ZipCache, purge_gone, sync_tree, wanted},
     lock::{LockedPackage, Lockfile},
     manifest::{Manifest, ModSpec, VersionReq},
     paths::DataDir,
@@ -263,11 +264,13 @@ impl Forge {
         Ok(id)
     }
 
-    /// Builds the profile tree from the lock.
+    /// Builds the profile tree from the lock. A package that left the lock
+    /// loses its config and whatever else it wrote into the profile too.
     pub async fn sync(&self, profile: &Profile, progress: &Progress) -> Result<SyncReport> {
         let manifest = profile.manifest().await?;
         let game = self.game(&manifest).await?;
         let lock = profile.lock().await?;
+        purge_gone(&game, &lock, profile.dir()).await?;
         let cache = ZipCache::new(self.data());
         sync_tree(
             &self.client,
@@ -296,6 +299,19 @@ impl Forge {
             return Ok(install);
         }
         locate(game, state.game_dirs.get(&key).cloned()).await
+    }
+
+    /// The mods the server lists as broken on the game version of this
+    /// machine. A game Steam does not know has no version, so nothing is
+    /// flagged, the doctor reports the missing game on its own.
+    pub async fn broken(&self, game: &GameDef) -> Result<Broken> {
+        let list = load_list(&self.client, self.data()).await?;
+        let updated = self
+            .locate_game(game, None)
+            .await
+            .ok()
+            .and_then(|install| install.updated);
+        Broken::resolve(&list, &game.label, updated)
     }
 
     /// Whether a modded game may earn achievements, off until the user asks.

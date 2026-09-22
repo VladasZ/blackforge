@@ -1,7 +1,7 @@
 use std::{
     fs::{File, create_dir_all, remove_file},
     io::copy,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use zip::ZipArchive;
@@ -11,14 +11,8 @@ use crate::{
     game::GameDef,
     ident::PackageId,
     install::rules::{Placement, plan_loader, plan_mod},
-    util::remove_empty_parents,
+    util::{remove_empty_parents, tree_path},
 };
-
-fn tree_path(tree: &Path, relative: &str) -> PathBuf {
-    relative
-        .split('/')
-        .fold(tree.to_path_buf(), |path, part| path.join(part))
-}
 
 /// Unpacks one package zip into `tree` and returns the tracked files it wrote.
 /// Blocking, call it from `spawn_blocking`.

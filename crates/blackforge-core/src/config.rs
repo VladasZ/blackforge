@@ -202,27 +202,39 @@ fn plain(text: &str) -> String {
 }
 
 /// The package a config file most likely belongs to. A mod names its config
-/// after its plugin id, `owner.mod_name.cfg` or close to it, and no file says
-/// which package that is, so the names are compared. The longest shared name
-/// wins, the owner in the file name breaks a tie.
+/// after its plugin id, `owner.mod_name.cfg` or close to it, or keeps it in a
+/// folder with its name, and no file says which package that is, so the
+/// names are compared. Every folder on the path and the file name without
+/// its extension count. The longest shared name wins, the owner in the name
+/// breaks a tie.
 pub fn package_of<'a>(
     file: &str,
     packages: impl IntoIterator<Item = &'a PackageId>,
 ) -> Option<&'a PackageId> {
-    let name = file.rsplit('/').next().unwrap_or(file);
-    let stem = plain(name.strip_suffix(".cfg").unwrap_or(name));
+    let mut parts: Vec<&str> = file.split('/').collect();
+    if let Some(name) = parts.pop() {
+        parts.push(name.rsplit_once('.').map_or(name, |(stem, _)| stem));
+    }
+    let parts: Vec<String> = parts.into_iter().map(plain).collect();
     packages
         .into_iter()
         .filter_map(|id| {
             let package = plain(id.name());
-            let shared = if stem.contains(&package) {
-                package.len()
-            } else if package.contains(&stem) {
-                stem.len()
-            } else {
-                return None;
-            };
-            (shared >= MIN_SHARED).then(|| ((shared, stem.contains(&plain(id.owner()))), id))
+            let owner = plain(id.owner());
+            parts
+                .iter()
+                .filter_map(|part| {
+                    let shared = if part.contains(&package) {
+                        package.len()
+                    } else if package.contains(part) {
+                        part.len()
+                    } else {
+                        return None;
+                    };
+                    (shared >= MIN_SHARED).then(|| (shared, part.contains(&owner)))
+                })
+                .max()
+                .map(|score| (score, id))
         })
         .max_by_key(|(score, _)| *score)
         .map(|(_, id)| id)
@@ -328,6 +340,42 @@ mod tests {
         let count = config.get("Limits", "Count")?;
         assert_eq!(count.default.as_deref(), Some("5"));
         assert_eq!(count.acceptable.as_deref(), Some("From 1 to 10"));
+        Ok(())
+    }
+
+    #[test]
+    fn a_file_matches_its_package_by_name_or_folder() -> Result<()> {
+        let packages: Vec<PackageId> = [
+            "Neobotics-HUDCompass",
+            "ZenDragon-Zen_ModLib",
+            "ZenDragon-ZenItemStands",
+            "denikson-BepInExPack_Valheim",
+        ]
+        .iter()
+        .map(|id| id.parse())
+        .collect::<Result<_>>()?;
+        let of = |file: &str| package_of(file, &packages).map(ToString::to_string);
+        assert_eq!(
+            of("neobotics.valheim_mod.hudcompass.cfg").as_deref(),
+            Some("Neobotics-HUDCompass")
+        );
+        assert_eq!(
+            of("Neobotics/HUDCompass/compass.png").as_deref(),
+            Some("Neobotics-HUDCompass")
+        );
+        assert_eq!(
+            of("ZenDragon.Zen.ModLib.cfg").as_deref(),
+            Some("ZenDragon-Zen_ModLib")
+        );
+        assert_eq!(
+            of("ZenDragon.ZenItemStands.cfg").as_deref(),
+            Some("ZenDragon-ZenItemStands")
+        );
+        assert_eq!(
+            of("BepInEx.cfg").as_deref(),
+            Some("denikson-BepInExPack_Valheim")
+        );
+        assert_eq!(of("QuickStackStore_player_2197692124.dat"), None);
         Ok(())
     }
 

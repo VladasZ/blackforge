@@ -1,6 +1,7 @@
 use std::{
     fs::read_dir,
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 
 use steamlocate::SteamDir;
@@ -18,6 +19,9 @@ pub struct GameInstall {
     pub executable: PathBuf,
     /// `None` when the folder was given by hand and not found through Steam.
     pub steam_dir: Option<PathBuf>,
+    /// When Steam last updated the game, from its manifest. `None` for a
+    /// folder given by hand, and when the manifest does not say.
+    pub updated: Option<SystemTime>,
 }
 
 /// Finds the game. `game_dir` skips the Steam lookup, for a server installed
@@ -25,23 +29,25 @@ pub struct GameInstall {
 pub async fn locate(game: &GameDef, game_dir: Option<PathBuf>) -> Result<GameInstall> {
     let game = game.clone();
     spawn_blocking(move || {
-        let (dir, steam_dir) = if let Some(dir) = game_dir {
-            (dir, None)
+        let (dir, steam_dir, updated) = if let Some(dir) = game_dir {
+            (dir, None, None)
         } else {
-            let (dir, steam_dir) = steam_app_dir(&game)?;
-            (dir, Some(steam_dir))
+            let (dir, steam_dir, updated) = steam_app_dir(&game)?;
+            (dir, Some(steam_dir), updated)
         };
         let executable = find_executable(&game, &dir)?;
         Ok(GameInstall {
             dir,
             executable,
             steam_dir,
+            updated,
         })
     })
     .await?
 }
 
-fn steam_app_dir(game: &GameDef) -> Result<(PathBuf, PathBuf)> {
+/// The game folder, the Steam folder, and when Steam last updated the game.
+fn steam_app_dir(game: &GameDef) -> Result<(PathBuf, PathBuf, Option<SystemTime>)> {
     let not_installed = || Error::GameNotInstalled(game.display_name.clone());
     let app_id = game.steam_app_id.ok_or_else(not_installed)?;
     let steam = SteamDir::locate().map_err(|_| not_installed())?;
@@ -49,7 +55,11 @@ fn steam_app_dir(game: &GameDef) -> Result<(PathBuf, PathBuf)> {
         .find_app(app_id)
         .map_err(|_| not_installed())?
         .ok_or_else(not_installed)?;
-    Ok((library.resolve_app_dir(&app), steam.path().to_path_buf()))
+    Ok((
+        library.resolve_app_dir(&app),
+        steam.path().to_path_buf(),
+        app.last_updated,
+    ))
 }
 
 fn find_executable(game: &GameDef, dir: &Path) -> Result<PathBuf> {

@@ -1,4 +1,5 @@
 mod cache;
+mod purge;
 pub(crate) mod rules;
 mod state;
 mod unpack;
@@ -7,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 pub use cache::ZipCache;
 use futures_util::{StreamExt, TryStreamExt, stream};
+pub use purge::purge_gone;
 pub use state::{Installed, InstalledPackage, STATE_FILE};
 use tokio::{fs, task::spawn_blocking};
 

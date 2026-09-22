@@ -1,0 +1,28 @@
+# The mods known to break the game. This list is kept by hand, blackforge
+# flags nothing on its own. A package is flagged in every version once the
+# game is at `since` or later. The game version of a machine comes from the
+# update time of its Steam manifest and the release days below, so every
+# release a `since` names needs a row here.
+
+[[games.valheim.releases]]
+version = "1.0.0"
+date = "2026-09-09"
+
+[[games.valheim.releases]]
+version = "1.0.12"
+date = "2026-09-11"
+
+[[games.valheim.releases]]
+version = "1.0.14"
+date = "2026-09-17"
+
+[[games.valheim.releases]]
+version = "1.0.15"
+date = "2026-09-18"
+
+# Built for the game before 1.0. Its resource patch throws after the copper
+# is taken out of the chest, the game never resets the craft timer, and one
+# click crafts until the chest is empty.
+[[games.valheim.mods]]
+package = "rendl0449-CraftFromContainers"
+since = "1.0.0"

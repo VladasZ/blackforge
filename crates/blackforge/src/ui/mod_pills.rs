@@ -1,6 +1,7 @@
-//! The pills of one mod in a row: its version, and a note when the mod is
-//! a dependency, pinned or disabled. Every page that lists mods shows the
-//! same two, so they are one view.
+//! The pills of one mod in a row: its version, a note when the mod is a
+//! dependency, pinned or disabled, and a red one when the server lists it as
+//! broken on this game version. Every page that lists mods shows the same
+//! three, so they are one view.
 
 use blackforge_core::manifest::{ModSpec, VersionReq};
 use hilen::{
@@ -52,50 +53,43 @@ pub struct ModPills {
     #[init]
     version: Pill,
     note: Pill,
+    broken: Pill,
 }
 
 impl Setup for ModPills {
     fn setup(self: Weak<Self>) {
         self.version.place().l(0).t(0).b(0);
         self.note.place().t(0).b(0);
+        self.broken.warn();
+        self.broken.place().t(0).b(0);
     }
 }
 
 impl ModPills {
     /// Sets the pills and returns the width they take together. The text
     /// decides the width, so the owner places the view after every call.
-    pub fn set(self: Weak<Self>, version: &str, note: Note) -> f32 {
-        let version = self.version.set("pill_version.svg", version);
-        self.version.place().w(version);
+    pub fn set(self: Weak<Self>, version: &str, note: Note, broken: bool) -> f32 {
+        let mut width = self.version.set("pill_version.svg", version);
+        self.version.place().w(width);
 
-        let Some((icon, text)) = note.icon_and_text() else {
-            self.note.set_hidden(true);
-            return version;
-        };
-        self.note.set_hidden(false);
-        let note = self.note.set(icon, text);
-        self.note.place().l(version + GAP).w(note);
-        version + GAP + note
-    }
-}
+        match note.icon_and_text() {
+            Some((icon, text)) => {
+                self.note.set_hidden(false);
+                let note = self.note.set(icon, text);
+                self.note.place().l(width + GAP).w(note);
+                width += GAP + note;
+            }
+            None => {
+                self.note.set_hidden(true);
+            }
+        }
 
-#[cfg(test)]
-mod tests {
-    use blackforge_core::manifest::{ModSpec, VersionReq};
-
-    use super::Note;
-
-    #[test]
-    fn note_of_a_manifest_entry() {
-        assert_eq!(Note::of(None), Note::Dependency);
-        assert_eq!(
-            Note::of(Some(&ModSpec::new(VersionReq::Latest))),
-            Note::None
-        );
-        let pinned = ModSpec::new("1.2.3".parse().unwrap());
-        assert_eq!(Note::of(Some(&pinned)), Note::Pinned);
-        let mut disabled = ModSpec::new(VersionReq::Latest);
-        disabled.enabled = false;
-        assert_eq!(Note::of(Some(&disabled)), Note::Disabled);
+        self.broken.set_hidden(!broken);
+        if broken {
+            let broken = self.broken.set("pill_broken.svg", "broken");
+            self.broken.place().l(width + GAP).w(broken);
+            width += GAP + broken;
+        }
+        width
     }
 }

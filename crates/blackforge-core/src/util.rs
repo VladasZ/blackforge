@@ -18,6 +18,13 @@ pub async fn exists(path: &Path) -> bool {
     fs::try_exists(path).await.unwrap_or(false)
 }
 
+/// A path stored with `/` on every system, joined below `tree`.
+pub fn tree_path(tree: &Path, relative: &str) -> PathBuf {
+    relative
+        .split('/')
+        .fold(tree.to_path_buf(), |path, part| path.join(part))
+}
+
 /// Every file under `root`, as paths relative to `root`, sorted.
 pub fn walk_files(root: &Path) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();

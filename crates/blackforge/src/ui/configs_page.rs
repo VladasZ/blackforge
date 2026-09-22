@@ -60,6 +60,8 @@ struct FilePackage {
     id: String,
     version: String,
     note: Note,
+    /// The server lists it as broken on this game version.
+    broken: bool,
     /// Empty when the package list does not know the mod.
     description: String,
 }
@@ -141,6 +143,7 @@ impl Setup for ConfigFiles {
                 let files = list(&profile).await?;
                 let ids = lock.packages.iter().map(|package| &package.id);
                 let descriptions = backend::descriptions(forge, &progress, ids).await;
+                let broken = backend::broken_known(forge, &progress).await;
                 let rows = files
                     .into_iter()
                     .map(|file| {
@@ -153,6 +156,7 @@ impl Setup for ConfigFiles {
                                 id: package.id.to_string(),
                                 version: package.version.to_string(),
                                 note: Note::of(manifest.mods.get(&package.id)),
+                                broken: broken.contains(&package.id),
                                 description: descriptions
                                     .get(&package.id.to_string())
                                     .cloned()
@@ -282,7 +286,9 @@ impl FileCard {
             self.name
                 .set_text(package.id.split_once('-').map_or(stem, |(_, name)| name));
             fit_description(self.description, &package.description);
-            let pills = self.pills.set(&package.version, package.note);
+            let pills = self
+                .pills
+                .set(&package.version, package.note, package.broken);
             self.pills
                 .place()
                 .clear()

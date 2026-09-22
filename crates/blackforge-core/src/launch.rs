@@ -349,6 +349,7 @@ mod tests {
             dir: PathBuf::from("/games/Valheim"),
             executable: PathBuf::from("/games/Valheim/valheim.app/Contents/MacOS/Valheim"),
             steam_dir: None,
+            updated: None,
         };
         let args = ["-console".to_owned()];
         let plan = plan(&input(
@@ -391,6 +392,7 @@ mod tests {
             dir: PathBuf::from("/srv/valheim"),
             executable: PathBuf::from("/srv/valheim/valheim_server.x86_64"),
             steam_dir: None,
+            updated: None,
         };
         let inherited = |name: &str| (name == "LD_LIBRARY_PATH").then(|| "/usr/lib".to_owned());
         let plan = plan(&LaunchInput {
@@ -443,6 +445,7 @@ mod tests {
             dir: PathBuf::from("/games/Valheim"),
             executable: PathBuf::from("/games/Valheim/valheim.exe"),
             steam_dir: None,
+            updated: None,
         };
         let result = plan(&input(
             Os::Linux,
@@ -462,6 +465,7 @@ mod tests {
             dir: PathBuf::from("C:/Steam/steamapps/common/Valheim"),
             executable: PathBuf::from("C:/Steam/steamapps/common/Valheim/valheim.exe"),
             steam_dir: Some(PathBuf::from("C:/Steam")),
+            updated: None,
         };
         let plan = plan(&input(
             Os::Windows,
@@ -490,6 +494,7 @@ mod tests {
             dir: PathBuf::from("C:/server"),
             executable: PathBuf::from("C:/server/valheim_server.exe"),
             steam_dir: Some(PathBuf::from("C:/Steam")),
+            updated: None,
         };
         let plan = plan(&input(
             Os::Windows,
