@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use blackforge_api::{
     ApiError, FoundUser, FriendName, Friends, Me, Search, SetUsername, SharedProfile, Status,
+    servers::{SaveServer, Server},
     setup::{Account, HistoryRow, Restore, Save, Saved},
 };
 use reqwest::{Method, RequestBuilder, StatusCode};
@@ -122,6 +123,21 @@ impl SocialClient {
                 .json(restore),
         )
         .await
+    }
+
+    pub async fn create_server(&self, save: &SaveServer) -> Result<Server> {
+        self.read(self.request(Method::POST, "/api/servers").json(save))
+            .await
+    }
+
+    pub async fn update_server(&self, id: &str, save: &SaveServer) -> Result<Server> {
+        let path = format!("/api/servers/{id}");
+        self.read(self.request(Method::PUT, &path).json(save)).await
+    }
+
+    pub async fn delete_server(&self, id: &str) -> Result<()> {
+        let path = format!("/api/servers/{id}");
+        self.send(self.request(Method::DELETE, &path)).await
     }
 
     async fn friend_action(&self, action: &str, username: &str) -> Result<()> {

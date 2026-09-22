@@ -3,6 +3,7 @@
 
 mod broken;
 mod routes;
+mod servers;
 mod site;
 mod sync;
 
@@ -43,6 +44,7 @@ async fn main() -> Result<()> {
         .merge(auth_routes(auth))
         .merge(routes::routes())
         .merge(sync::routes())
+        .merge(servers::routes())
         .merge(broken::routes(broken))
         .merge(site::routes())
         .with_state(db);

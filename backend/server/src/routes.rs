@@ -47,7 +47,7 @@ async fn username_of(db: &PgPool, user_id: Uuid) -> Result<Option<String>, sqlx:
 
 /// Friends only exist between people with a username, it is all they see of
 /// each other.
-async fn require_username(db: &PgPool, user: &User) -> Result<(), AppError> {
+pub(crate) async fn require_username(db: &PgPool, user: &User) -> Result<(), AppError> {
     match username_of(db, user.id).await? {
         Some(_) => Ok(()),
         None => Err(AppError::BadRequest("pick a username first".to_owned())),

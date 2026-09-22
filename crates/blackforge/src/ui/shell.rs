@@ -16,6 +16,7 @@ use crate::ui::{
     friends_page::FriendsPage,
     mods_page::ModsPage,
     page::Page,
+    servers_page::ServersPage,
     share_page::SharePage,
     sidebar::{self, Sidebar},
     status::{self, StatusBar},
@@ -77,6 +78,7 @@ impl Shell {
             Page::Browse => self.content.add_view::<BrowsePage>(),
             Page::Configs => self.content.add_view::<ConfigsPage>(),
             Page::Friends => self.friends_page(),
+            Page::Servers => self.content.add_view::<ServersPage>(),
             Page::Share => self.content.add_view::<SharePage>(),
             Page::Doctor => self.content.add_view::<DoctorPage>(),
         };

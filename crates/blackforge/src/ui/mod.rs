@@ -20,6 +20,8 @@ mod mods_page;
 mod nav_item;
 mod page;
 mod pill;
+mod server_modal;
+mod servers_page;
 mod share_page;
 mod shell;
 mod sidebar;
