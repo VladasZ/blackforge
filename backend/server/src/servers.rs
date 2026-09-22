@@ -64,6 +64,13 @@ async fn one(db: &PgPool, id: Uuid) -> Result<Server, AppError> {
     server_of(row.ok_or(AppError::NotFound)?)
 }
 
+/// The id of the path. It comes as text because `Path<Uuid>` needs the serde
+/// feature of uuid, which is on only through other workspace crates, and the
+/// Dockerfile builds this crate alone. A malformed id reads like an unknown one.
+fn server_id(id: &str) -> Result<Uuid, AppError> {
+    Uuid::parse_str(id).map_err(|_| AppError::NotFound)
+}
+
 /// The checked body as it goes into the table.
 fn checked(body: &SaveServer) -> Result<(String, String, String), AppError> {
     validate(body).map_err(|error| AppError::BadRequest(error.to_string()))?;
@@ -111,9 +118,10 @@ async fn create(
 async fn update(
     user: User,
     State(db): State<PgPool>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(body): Json<SaveServer>,
 ) -> Result<Json<Server>, AppError> {
+    let id = server_id(&id)?;
     let (name, game, mods) = checked(&body)?;
     let done = sqlx::query(
         r"UPDATE servers SET name = $3, game = $4, mods = $5, updated_at = now()
@@ -136,8 +144,9 @@ WHERE id = $1 AND owner_id = $2",
 async fn delete(
     user: User,
     State(db): State<PgPool>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<(), AppError> {
+    let id = server_id(&id)?;
     let done = sqlx::query("DELETE FROM servers WHERE id = $1 AND owner_id = $2")
         .bind(id)
         .bind(user.id)
