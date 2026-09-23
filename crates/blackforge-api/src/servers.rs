@@ -53,6 +53,10 @@ pub struct Server {
     pub mods: Vec<ServerMod>,
     /// Unix seconds of the last save.
     pub updated: i64,
+    /// Unix seconds of the registration, the join buttons go oldest first.
+    /// An answer from a backend before the field reads as 0.
+    #[serde(default)]
+    pub created: i64,
     /// Set only for a server of `JOIN_ADMIN`, see `SaveServer::address`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub address: Option<String>,
@@ -180,12 +184,13 @@ mod tests {
             owner: "vladas".to_owned(),
             mods: vec![valheim_plus()],
             updated: 1_790_090_031,
+            created: 1_790_000_000,
             address: None,
         };
         let json = to_string(&server).unwrap();
         assert_eq!(
             json,
-            r#"{"id":"6d5c","name":"Durka","game":"valheim","owner":"vladas","mods":[{"id":"Grantapher-ValheimPlus_Grantapher_Temporary","version":"10.2.0"}],"updated":1790090031}"#
+            r#"{"id":"6d5c","name":"Durka","game":"valheim","owner":"vladas","mods":[{"id":"Grantapher-ValheimPlus_Grantapher_Temporary","version":"10.2.0"}],"updated":1790090031,"created":1790000000}"#
         );
         assert_eq!(from_str::<Server>(&json).unwrap(), server);
     }
@@ -227,6 +232,7 @@ mod tests {
             owner: "vladas".to_owned(),
             mods: Vec::new(),
             updated: 1,
+            created: 1,
             address: Some("86.100.76.6:2456".to_owned()),
         };
         let json = to_string(&server).unwrap();

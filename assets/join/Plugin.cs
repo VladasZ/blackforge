@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using BepInEx;
 using HarmonyLib;
+using Newtonsoft.Json;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -24,14 +25,14 @@ namespace Blackforge
         private static readonly Vector2 Margin = new Vector2(40f, -40f);
         private const float Gap = 16f;
         private const float FontSize = 36f;
+        // Room left and right of the label inside the frame.
+        private const float TextPadding = 80f;
 
-        [Serializable]
         public class JoinList
         {
             public List<JoinServer> servers = new List<JoinServer>();
         }
 
-        [Serializable]
         public class JoinServer
         {
             public string name;
@@ -64,7 +65,9 @@ namespace Blackforge
             }
             try
             {
-                JoinList list = JsonUtility.FromJson<JoinList>(File.ReadAllText(path));
+                // Not Unity's JsonUtility, in a plugin it gave back an empty
+                // list without an error. The game ships Newtonsoft.
+                JoinList list = JsonConvert.DeserializeObject<JoinList>(File.ReadAllText(path));
                 if (list?.servers == null)
                 {
                     return found;
@@ -94,13 +97,23 @@ namespace Blackforge
                 log.LogWarning("the character select has no start button, no join button is added");
                 return;
             }
+            // Every button takes the width of the longest label, so a long
+            // server name is not cut and the stack stays even.
+            List<RectTransform> rects = new List<RectTransform>();
+            float width = Size.x;
             for (int i = 0; i < servers.Count; i++)
             {
-                AddButton(__instance, template, servers[i], i);
+                TMP_Text text = AddButton(__instance, template, servers[i], i, rects);
+                width = Mathf.Max(width, text.GetPreferredValues(text.text).x + TextPadding);
+            }
+            foreach (RectTransform rect in rects)
+            {
+                rect.sizeDelta = new Vector2(width, Size.y);
             }
         }
 
-        private static void AddButton(FejdStartup menu, Button template, JoinServer server, int index)
+        private static TMP_Text AddButton(
+            FejdStartup menu, Button template, JoinServer server, int index, List<RectTransform> rects)
         {
             GameObject copy = Object.Instantiate(template.gameObject, menu.m_mainMenu.transform, false);
             copy.name = "BlackforgeJoin" + index;
@@ -127,6 +140,7 @@ namespace Blackforge
             rect.anchoredPosition = Margin + new Vector2(0f, -(Size.y + Gap) * index);
             rect.sizeDelta = Size;
             rect.localScale = Vector3.one;
+            rects.Add(rect);
 
             TMP_Text text = copy.GetComponentInChildren<TMP_Text>(true);
             text.text = "Join " + server.name;
@@ -138,6 +152,7 @@ namespace Blackforge
             // A new event drops the click handlers the copy brought from the template.
             button.onClick = new Button.ButtonClickedEvent();
             button.onClick.AddListener(() => Join(menu, server));
+            return text;
         }
 
         private static void Join(FejdStartup menu, JoinServer server)

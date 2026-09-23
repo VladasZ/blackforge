@@ -29,7 +29,8 @@ mods.
 - `GET /api/servers` is the whole list, sorted by name. It is public, no login,
   so a player can install the mods of a server before they ever sign in. Each
   row has the id, the name, the game, the owner's username, the mods, the
-  time of the last save and the join address when there is one.
+  time of the last save, the time of the registration and the join address
+  when there is one.
 - `POST /api/servers` registers one. Wants a login and a username.
 - `PUT /api/servers/{id}` and `DELETE /api/servers/{id}` change or remove an
   own server. A server of somebody else gets the same 404 as one that does not

@@ -66,11 +66,14 @@ fn plugin_dir(profile_dir: &Path) -> PathBuf {
         .fold(profile_dir.to_path_buf(), |path, part| path.join(part))
 }
 
-/// The servers that get a button. The backend lets only the join admin set an
+/// The servers that get a button, oldest registration first, so the main
+/// server keeps the top spot. The backend lets only the join admin set an
 /// address, the owner check here keeps a stray row out of every menu anyway.
 fn join_list(servers: &[Server]) -> Result<String> {
+    let mut servers: Vec<&Server> = servers.iter().collect();
+    servers.sort_by_key(|server| server.created);
     let servers = servers
-        .iter()
+        .into_iter()
         .filter(|server| server.game == VALHEIM && server.owner == JOIN_ADMIN)
         .filter_map(|server| {
             server.address.as_deref().map(|address| JoinServer {
@@ -115,7 +118,7 @@ mod tests {
     use super::*;
     use crate::testing::valheim;
 
-    fn server(name: &str, owner: &str, address: Option<&str>) -> Server {
+    fn server(name: &str, owner: &str, address: Option<&str>, created: i64) -> Server {
         Server {
             id: name.to_owned(),
             name: name.to_owned(),
@@ -123,20 +126,22 @@ mod tests {
             owner: owner.to_owned(),
             mods: Vec::new(),
             updated: 0,
+            created,
             address: address.map(str::to_owned),
         }
     }
 
     #[tokio::test]
-    async fn the_list_holds_only_admin_servers_with_an_address() -> Result<()> {
+    async fn the_list_holds_only_admin_servers_with_an_address_oldest_first() -> Result<()> {
         let temp = tempdir().at(Path::new("tempdir"))?;
-        let mut other_game = server("Valley", JOIN_ADMIN, Some("86.100.76.6:2456"));
+        let mut other_game = server("Valley", JOIN_ADMIN, Some("86.100.76.6:2456"), 0);
         other_game.game = "stardew".to_owned();
+        // The backend sorts by name, the buttons go by registration.
         let servers = [
-            server("Arkham Asylum", JOIN_ADMIN, Some("86.100.76.6:2456")),
-            server("Durka", JOIN_ADMIN, Some("86.100.76.6:2456")),
-            server("Mods only", JOIN_ADMIN, None),
-            server("Lookalike", "stranger", Some("1.2.3.4:2456")),
+            server("Arkham Asylum", JOIN_ADMIN, Some("86.100.76.6:2456"), 20),
+            server("Durka", JOIN_ADMIN, Some("86.100.76.6:2456"), 10),
+            server("Mods only", JOIN_ADMIN, None, 0),
+            server("Lookalike", "stranger", Some("1.2.3.4:2456"), 0),
             other_game,
         ];
 
@@ -147,8 +152,8 @@ mod tests {
         assert_eq!(
             written,
             serde_json::json!({ "servers": [
-                { "name": "Arkham Asylum", "address": "86.100.76.6:2456" },
                 { "name": "Durka", "address": "86.100.76.6:2456" },
+                { "name": "Arkham Asylum", "address": "86.100.76.6:2456" },
             ]})
         );
         Ok(())

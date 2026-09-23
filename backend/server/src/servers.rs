@@ -25,21 +25,32 @@ pub fn routes() -> Router<PgPool> {
         .route("/api/servers/{id}", put(update).delete(delete))
 }
 
-type Row = (Uuid, String, String, String, String, i64, Option<String>);
+type Row = (
+    Uuid,
+    String,
+    String,
+    String,
+    String,
+    i64,
+    i64,
+    Option<String>,
+);
 
 // The two reads spell the columns out twice, sqlx takes only a literal query.
 const LIST: &str = r"
-SELECT s.id, s.name, s.game, p.username, s.mods, EXTRACT(EPOCH FROM s.updated_at)::bigint, s.address
+SELECT s.id, s.name, s.game, p.username, s.mods, EXTRACT(EPOCH FROM s.updated_at)::bigint,
+    EXTRACT(EPOCH FROM s.created_at)::bigint, s.address
 FROM servers s JOIN profiles p ON p.user_id = s.owner_id
 ORDER BY lower(s.name), s.created_at";
 
 const ONE: &str = r"
-SELECT s.id, s.name, s.game, p.username, s.mods, EXTRACT(EPOCH FROM s.updated_at)::bigint, s.address
+SELECT s.id, s.name, s.game, p.username, s.mods, EXTRACT(EPOCH FROM s.updated_at)::bigint,
+    EXTRACT(EPOCH FROM s.created_at)::bigint, s.address
 FROM servers s JOIN profiles p ON p.user_id = s.owner_id
 WHERE s.id = $1";
 
 fn server_of(row: Row) -> Result<Server, AppError> {
-    let (id, name, game, owner, mods, updated, address) = row;
+    let (id, name, game, owner, mods, updated, created, address) = row;
     let mods: Vec<ServerMod> = from_str(&mods).map_err(|error| AppError::Internal(error.into()))?;
     Ok(Server {
         id: id.to_string(),
@@ -48,6 +59,7 @@ fn server_of(row: Row) -> Result<Server, AppError> {
         owner,
         mods,
         updated,
+        created,
         address,
     })
 }

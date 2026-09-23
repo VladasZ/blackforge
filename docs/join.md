@@ -34,9 +34,13 @@ seconds, and writes it as `servers.json`:
 { "servers": [{ "name": "Durka", "address": "86.100.76.6:2456" }] }
 ```
 
-The list sits in a field because Unity's `JsonUtility` reads only an object at
-the top. A failed fetch keeps the file of the last start. No file, or no server
-in it, means no button.
+The plugin reads it with the Newtonsoft library the game ships. Unity's
+`JsonUtility` gave back an empty list in the plugin without any error, so never
+go back to it. A failed fetch keeps the file of the last start. No file, or no
+server in it, means no button.
+
+The buttons go oldest registration first, so Durka stays on top. Every button
+takes the width of the longest label, so a long name is not cut.
 
 So a new server needs no release. Register it on the Servers page and give it
 the address in the form, the next start of the game shows its button.
