@@ -1,25 +1,25 @@
 //! The config files of the mods: pick a file on the left, edit its settings
-//! on the right. A value is saved when its field loses the focus, an on or
-//! off value has a switch and is saved at once.
+//! on the right, see `config_settings`.
 
-use blackforge_core::config::{Setting, find, list, package_of, read, write};
+use blackforge_core::config::{list, package_of};
 use hilen::{
     Event,
-    dispatch::after,
     refs::{Weak, weak_from_ref},
     ui::{
-        Button, CellRegistry, Container, Label, Setup, Switch, TableData, TableView, TextAlignment,
-        TextField, VerticalAlignment, View, ViewData, ViewFrame, ViewTouch, view,
+        CellRegistry, Label, Setup, TableData, TableView, TextAlignment, VerticalAlignment, View,
+        ViewData, ViewTouch, view,
     },
 };
 
 use crate::{
     backend,
     ui::{
-        colors, hover,
+        colors,
+        config_settings::ConfigSettings,
+        hover,
         mod_icon::ModIcon,
         mod_pills::{ModPills, Note},
-        pill, style, toast,
+        names, pill, style, toast,
     },
 };
 
@@ -40,20 +40,6 @@ const DESCRIPTION_W: f32 = FILES_WIDTH - BAR_CLEAR - FILE_TEXT_LEFT - 10.0;
 const PILLS_T: f32 = DESCRIPTION_T + DESCRIPTION_H + 4.0;
 const CARD_HEIGHT: f32 = PILLS_T + pill::HEIGHT + 10.0;
 const FILE_HEIGHT: f32 = CARD_HEIGHT + CARD_GAP;
-/// A setting row with a detail of one line. A longer detail wraps and
-/// makes its row taller.
-const SETTING_HEIGHT: f32 = 62.0;
-const DETAIL_T: f32 = 34.0;
-const DETAIL_L: f32 = 4.0;
-/// The value field and the gap before it.
-const DETAIL_R: f32 = 310.0;
-const SETTING_PAD_B: f32 = 12.0;
-/// The dim "default: true" line under the description.
-const DEFAULT_H: f32 = 16.0;
-const DEFAULT_GAP: f32 = 4.0;
-const FIELD_W: f32 = 290.0;
-/// Seconds the saved mark stays next to a field.
-const SAVED_FOR: f32 = 2.0;
 
 /// One config file and the mod it most likely belongs to.
 #[derive(Clone, Debug)]
@@ -89,13 +75,14 @@ impl Setup for ConfigsPage {
         self.title.place().t(24).l(style::PAGE_PAD).size(300, 30);
 
         style::dim(self.subtitle);
-        self.subtitle
-            .set_text("a value is saved when its field loses the focus, a switch at once");
+        self.subtitle.set_text(
+            "A value is saved when its field loses the focus, a switch or a list at once",
+        );
         self.subtitle.place().t(56).l(style::PAGE_PAD).size(500, 16);
 
         style::dim(self.empty);
         self.empty.set_text(
-            "no config files yet, a mod writes its config on the first start of the game",
+            "No config files yet, a mod writes its config on the first start of the game",
         );
         self.empty.set_alignment(TextAlignment::Center);
         self.empty.set_hidden(true);
@@ -290,9 +277,7 @@ impl FileCard {
         self.pills.set_hidden(row.package.is_none());
         if let Some(package) = &row.package {
             self.icon.show(&package.id, &package.version);
-            // `Owner-Name`, the name alone is the title of the card.
-            self.name
-                .set_text(package.id.split_once('-').map_or(stem, |(_, name)| name));
+            self.name.set_text(names::title(&package.id));
             fit_description(self.description, &package.description);
             let pills = self
                 .pills
@@ -339,389 +324,5 @@ fn fit_description(label: Weak<Label>, text: &str) {
     let mut words: Vec<&str> = text.split(' ').collect();
     while label.size_for_width(DESCRIPTION_W).height > DESCRIPTION_H && words.pop().is_some() {
         label.set_text(format!("{}...", words.join(" ")));
-    }
-}
-
-#[derive(Clone, Debug)]
-enum Row {
-    Section(String),
-    Setting(SettingRow),
-}
-
-#[derive(Clone, Debug)]
-struct SettingRow {
-    setting: Setting,
-    /// The description, the text under the key.
-    detail: String,
-}
-
-impl SettingRow {
-    fn new(setting: Setting) -> Self {
-        let detail = setting.description.join(" ");
-        Self { setting, detail }
-    }
-
-    /// The value differs from the default the file names. A setting with no
-    /// default is never marked, there is nothing to go back to.
-    fn changed(&self) -> bool {
-        self.setting
-            .default
-            .as_ref()
-            .is_some_and(|default| !default.eq_ignore_ascii_case(&self.setting.value))
-    }
-}
-
-#[view]
-struct ConfigSettings {
-    file: String,
-    rows: Vec<Row>,
-    /// The row that shows the saved mark right now.
-    saved: Option<usize>,
-
-    #[init]
-    table: TableView,
-    /// Never shown. It has the look of a detail label, so it can say how
-    /// tall a detail is at the width the table has now.
-    probe: Label,
-}
-
-impl Setup for ConfigSettings {
-    fn setup(mut self: Weak<Self>) {
-        self.table
-            .set_data_source(self)
-            .register_cell::<SectionCell>()
-            .register_cell::<SettingCell>();
-        style::table(self.table);
-        self.table.set_variable_heights(true);
-        self.table.place().back();
-        // A detail wraps at the width of the panel, so a new width means new
-        // row heights. The table listens to its own size event itself and an
-        // event takes one listener, so the panel listens to its own. The
-        // panel is laid out before the table in it, so its width is the
-        // fresh one, and the table fills it.
-        self.size_changed().sub(move || self.table.reload_data());
-
-        style::dim(self.probe);
-        self.probe.set_multiline(true);
-        self.probe.set_hidden(true);
-    }
-}
-
-impl ConfigSettings {
-    fn open(mut self: Weak<Self>, file: String) {
-        self.file.clone_from(&file);
-        backend::load(
-            "reading the config",
-            |forge, progress| async move {
-                let profile = backend::profile(forge, &progress).await?;
-                let config = read(&find(&profile, &file).await?).await?;
-                let mut rows = Vec::new();
-                let mut section = None;
-                for setting in config.settings() {
-                    if section.as_ref() != Some(&setting.section) {
-                        section = Some(setting.section.clone());
-                        rows.push(Row::Section(setting.section.clone()));
-                    }
-                    rows.push(Row::Setting(SettingRow::new(setting)));
-                }
-                Ok((file, rows))
-            },
-            move |result| {
-                if !self.is_ok() {
-                    return;
-                }
-                match result {
-                    // The user can pick another file while this one loads.
-                    Ok((file, rows)) if file == self.file => {
-                        self.rows = rows;
-                        self.table.reload_data();
-                    }
-                    Ok(_) => {}
-                    Err(error) => toast::failure(&error),
-                }
-            },
-        );
-    }
-
-    fn save(mut self: Weak<Self>, index: usize, value: String) {
-        let Some(Row::Setting(row)) = self.rows.get_mut(index) else {
-            return;
-        };
-        if row.setting.value == value {
-            return;
-        }
-        row.setting.value.clone_from(&value);
-
-        let section = row.setting.section.clone();
-        let key = row.setting.key.clone();
-        let file = self.file.clone();
-        backend::change(
-            "saving the config",
-            |forge, progress| async move {
-                let profile = backend::profile(forge, &progress).await?;
-                let path = find(&profile, &file).await?;
-                let mut config = read(&path).await?;
-                config.set(&section, &key, &value)?;
-                write(&path, &config).await?;
-                Ok(format!("{section}.{key} = {value}"))
-            },
-            move |result: anyhow::Result<String>| match result {
-                Ok(_) => {
-                    if self.is_ok() {
-                        self.show_saved(index);
-                    }
-                }
-                Err(error) => {
-                    toast::failure(&error);
-                    // The row already shows the new value, the file does not.
-                    if self.is_ok() {
-                        self.open(self.file.clone());
-                    }
-                }
-            },
-        );
-    }
-}
-
-impl ConfigSettings {
-    /// The mark goes away by itself. A later save moves it to its own row.
-    fn show_saved(mut self: Weak<Self>, index: usize) {
-        self.saved = Some(index);
-        self.table.reload_data();
-        after(SAVED_FOR, move || {
-            if self.is_ok() && self.saved == Some(index) {
-                let mut page = self;
-                page.saved = None;
-                page.table.reload_data();
-            }
-        });
-    }
-
-    fn reset(self: Weak<Self>, index: usize) {
-        let Some(Row::Setting(row)) = self.rows.get(index) else {
-            return;
-        };
-        if let Some(default) = row.setting.default.clone() {
-            self.save(index, default);
-        }
-    }
-}
-
-impl TableData for ConfigSettings {
-    fn cell_height(&self, index: usize) -> f32 {
-        let Row::Setting(row) = &self.rows[index] else {
-            return SETTING_HEIGHT;
-        };
-        self.probe.set_text(&row.detail);
-        let width = self.width() - DETAIL_L - DETAIL_R;
-        let mut detail = if row.detail.is_empty() {
-            0.0
-        } else {
-            self.probe.size_for_width(width).height
-        };
-        if row.setting.default.is_some() {
-            detail += DEFAULT_GAP + DEFAULT_H;
-        }
-        (DETAIL_T + detail + SETTING_PAD_B).max(SETTING_HEIGHT)
-    }
-
-    fn number_of_cells(&self) -> usize {
-        self.rows.len()
-    }
-
-    fn setup_cell(&mut self, index: usize, registry: &mut CellRegistry) -> Weak<dyn View> {
-        match &self.rows[index] {
-            Row::Section(name) => {
-                let cell = registry.cell::<SectionCell>();
-                cell.name.set_text(name);
-                cell
-            }
-            Row::Setting(row) => {
-                let cell = registry.cell::<SettingCell>();
-                let saved = self.saved == Some(index);
-                cell.set_setting(index, weak_from_ref(self), row, saved, self.width());
-                cell
-            }
-        }
-    }
-
-    fn cell_selected(&mut self, _: usize) {}
-}
-
-#[view]
-struct SectionCell {
-    #[init]
-    name: Label,
-}
-
-impl Setup for SectionCell {
-    fn setup(self: Weak<Self>) {
-        style::body(self.name);
-        self.name.set_text_color(colors::ACCENT);
-        self.name.place().l(4).r(4).b(8).h(20);
-    }
-}
-
-#[view]
-struct SettingCell {
-    index: usize,
-    page: Weak<ConfigSettings>,
-
-    #[init]
-    key: Label,
-    changed: Container,
-    reset: Button,
-    detail: Label,
-    default: Label,
-    saved: Label,
-    value: TextField,
-    toggle: Switch,
-    line: Container,
-}
-
-impl Setup for SettingCell {
-    fn setup(self: Weak<Self>) {
-        style::body(self.key);
-        self.key.set_ellipsize(true);
-
-        // An orange dot after the key says the value is not the default.
-        self.changed.set_color(colors::ACCENT);
-        self.changed.set_corner_radius(4);
-
-        style::ghost(self.reset, "Reset");
-        self.reset.set_border_width(0);
-        self.reset.set_text_size(12);
-        self.reset.set_text_color(colors::ACCENT);
-        self.reset.on_tap(move || {
-            if self.page.is_ok() {
-                self.page.reset(self.index);
-            }
-        });
-
-        // The whole text, wrapped. The row is as tall as the text needs.
-        style::dim(self.detail);
-        self.detail.set_multiline(true);
-        self.detail.set_vertical_alignment(VerticalAlignment::Top);
-
-        style::dim(self.default);
-
-        style::dim(self.saved);
-        self.saved.set_text("saved");
-        self.saved.set_text_color(colors::OK);
-        self.saved.set_alignment(TextAlignment::Right);
-        self.saved
-            .place()
-            .r(16.0 + FIELD_W + 8.0)
-            .center_y()
-            .size(50, 16);
-
-        style::field(self.value, "");
-        self.value
-            .place()
-            .r(16)
-            .center_y()
-            .size(FIELD_W, style::FIELD_H);
-        self.value.editing_ended.val(move |text| {
-            if self.page.is_ok() {
-                self.page.save(self.index, text);
-            }
-        });
-
-        self.toggle.place().r(16).center_y().size(44, 24);
-        self.toggle.on_change(move |on| {
-            if self.page.is_ok() {
-                self.page.save(self.index, on.to_string());
-            }
-        });
-
-        self.line.set_color(colors::BORDER);
-        self.line.place().l(0).r(0).b(0).h(1);
-    }
-}
-
-impl SettingCell {
-    fn set_setting(
-        mut self: Weak<Self>,
-        index: usize,
-        page: Weak<ConfigSettings>,
-        row: &SettingRow,
-        saved: bool,
-        width: f32,
-    ) {
-        self.index = index;
-        self.page = page;
-
-        // The key is as wide as its text, so the dot and the reset link sit
-        // right after it.
-        self.key.set_text(&row.setting.key);
-        let key = self
-            .key
-            .content_size()
-            .width
-            .min(width - DETAIL_L - DETAIL_R - 90.0);
-        self.key.place().clear().t(10).l(DETAIL_L).w(key).h(20);
-        let changed = row.changed();
-        self.changed.set_hidden(!changed);
-        self.changed
-            .place()
-            .clear()
-            .t(16)
-            .l(DETAIL_L + key + 8.0)
-            .size(8, 8);
-        self.reset.set_hidden(!changed);
-        self.reset
-            .place()
-            .clear()
-            .t(8)
-            .l(DETAIL_L + key + 22.0)
-            .size(56, 24);
-
-        let mut y = DETAIL_T;
-        self.detail.set_text(&row.detail);
-        self.detail.set_hidden(row.detail.is_empty());
-        let detail = if row.detail.is_empty() {
-            0.0
-        } else {
-            self.detail
-                .size_for_width(width - DETAIL_L - DETAIL_R)
-                .height
-        };
-        self.detail
-            .place()
-            .clear()
-            .t(y)
-            .l(DETAIL_L)
-            .r(DETAIL_R)
-            .h(detail);
-        y += detail;
-
-        self.default.set_hidden(row.setting.default.is_none());
-        if let Some(default) = &row.setting.default {
-            if detail > 0.0 {
-                y += DEFAULT_GAP;
-            }
-            self.default.set_text(format!("default: {default}"));
-            self.default
-                .place()
-                .clear()
-                .t(y)
-                .l(DETAIL_L)
-                .r(DETAIL_R)
-                .h(DEFAULT_H);
-        }
-
-        self.saved.set_hidden(!saved);
-
-        let on = row.setting.as_bool();
-        self.value.set_hidden(on.is_some());
-        self.toggle.set_hidden(on.is_none());
-        match on {
-            Some(on) => {
-                self.toggle.set_on(on);
-            }
-            None => {
-                self.value.set_text(&row.setting.value);
-            }
-        }
     }
 }

@@ -20,7 +20,7 @@ use hilen::{
 use crate::{
     backend,
     ui::{
-        colors,
+        busy, colors,
         mod_icon::ModIcon,
         mod_pills::Note,
         mods_page::lock_change_summary,
@@ -74,7 +74,7 @@ impl Installed {
             Note::Pinned(server) => format!(", pinned for {server}"),
             Note::Disabled => ", disabled".to_owned(),
         };
-        format!("installed {}{how}", self.version)
+        format!("Installed {}{how}", self.version)
     }
 }
 
@@ -116,7 +116,7 @@ impl ModDetails {
             shown.push(format!("and {} more", needs.len() - SHOWN_NEEDS));
         }
         if shown.is_empty() {
-            shown.push("nothing".to_owned());
+            shown.push("Nothing".to_owned());
         }
         let versions: Vec<String> = package
             .versions
@@ -126,7 +126,7 @@ impl ModDetails {
             .collect();
         let broken = match (broken.since(&package.id), broken.version()) {
             (Some(since), Some(game)) => {
-                format!("broken on game version {since} and later, this game is on {game}")
+                format!("Broken on game version {since} and later, this game is on {game}")
             }
             _ => String::new(),
         };
@@ -256,7 +256,7 @@ impl Setup for ModInfo {
             .set_vertical_alignment(VerticalAlignment::Top);
 
         style::dim(self.needs_title);
-        self.needs_title.set_text("needs");
+        self.needs_title.set_text("Needs");
 
         style::body(self.needs);
         self.needs.set_text_size(13);
@@ -264,12 +264,12 @@ impl Setup for ModInfo {
         self.needs.set_vertical_alignment(VerticalAlignment::Top);
 
         style::dim(self.versions_title);
-        self.versions_title.set_text("versions");
+        self.versions_title.set_text("Versions");
 
         self.versions.set_color(colors::CLEAR);
 
         style::dim(self.deprecated);
-        self.deprecated.set_text("this package is deprecated");
+        self.deprecated.set_text("This package is deprecated");
         self.deprecated.set_text_color(colors::BAD);
 
         style::dim(self.broken);
@@ -293,6 +293,7 @@ impl Setup for ModInfo {
         style::primary(self.add, "Add");
         self.add.place().b(16).r(PAD).size(96, style::BUTTON_H);
         self.add.on_tap(move || self.add_to_profile());
+        busy::track(self.add);
 
         style::ghost(self.close, "Close");
         self.close.on_tap(move || self.hide_modal(false));
@@ -405,6 +406,7 @@ impl ModInfo {
 
     fn add_to_profile(self: Weak<Self>) {
         let id = self.details.id.clone();
+        busy::press(self.add, "Adding...");
         backend::change(
             "adding the mod",
             |forge, progress| async move {

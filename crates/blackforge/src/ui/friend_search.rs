@@ -41,7 +41,7 @@ pub struct FriendSearch {
 
 impl Setup for FriendSearch {
     fn setup(self: Weak<Self>) {
-        style::field(self.field, "search by username");
+        style::field(self.field, "Search by username");
         self.field
             .place()
             .t(0)
@@ -221,15 +221,15 @@ impl FoundCell {
                 self.primary_action("Add");
             }
             Relation::AskedMe => {
-                self.detail.set_text("wants to be your friend");
+                self.detail.set_text("Wants to be your friend");
                 self.primary_action("Accept");
             }
             Relation::Asked => {
-                self.detail.set_text("request sent, waiting for an answer");
+                self.detail.set_text("Request sent, waiting for an answer");
                 style::ghost(self.action, "Cancel");
             }
             Relation::Friend => {
-                self.detail.set_text("your friend");
+                self.detail.set_text("Your friend");
             }
         }
     }

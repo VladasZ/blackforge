@@ -25,7 +25,7 @@ use serde_json::to_string;
 
 use crate::{
     backend,
-    ui::{nav_item::Badge, page::Page, sidebar},
+    ui::{nav_item::Badge, page::Page, sidebar, toast},
 };
 
 /// The app says it is still in game this often. The server reads two missed
@@ -65,6 +65,18 @@ pub fn signed_out() {
         LAST_UPLOAD.reset();
     }
     show_requests(0);
+}
+
+/// Signs out on the server and here, then calls `done`. A failure on the
+/// server shows as a toast, the local sign out happens anyway.
+pub fn sign_out(done: impl FnOnce() + Send + 'static) {
+    GoogleLogin::logout(move |result| {
+        if let Err(error) = result {
+            toast::failure(&error);
+        }
+        signed_out();
+        done();
+    });
 }
 
 /// Sends the mods and the changed settings when they differ from the last

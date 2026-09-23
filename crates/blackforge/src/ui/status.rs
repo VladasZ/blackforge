@@ -11,7 +11,7 @@ use hilen::{
     ui::{Button, Container, Label, ProgressView, Setup, UIAnimation, ViewData, ViewTooltip, view},
 };
 
-use crate::ui::{colors, icon_button::IconButton, style};
+use crate::ui::{colors, icon_button::IconButton, names, style};
 use crate::{
     ui::toast,
     updater::{self, Phase},
@@ -87,7 +87,7 @@ impl Setup for StatusBar {
         let text_right = progress_right + PROGRESS_WIDTH + TEXT_GAP;
 
         style::dim(self.text);
-        self.text.set_text("ready");
+        self.text.set_text("Ready");
         self.text.place().l(style::PAGE_PAD).r(text_right).t(0).b(0);
 
         self.progress.set_hidden(true);
@@ -100,7 +100,7 @@ impl Setup for StatusBar {
         // The button always shows, like in kukareker. The engine opens the
         // dialog only with a Sentry DSN, without one a tap only logs a warning.
         self.bug.set_icon("bug.svg");
-        self.bug.set_tooltip("report a bug");
+        self.bug.set_tooltip("Report a bug");
         self.bug
             .place()
             .r(style::PAGE_PAD)
@@ -173,7 +173,9 @@ impl StatusBar {
         self.next_id += 1;
         let id = self.next_id;
         self.running.push(id);
-        self.text.set_text(title);
+        // The core names its operations in lower case, the bar starts a
+        // sentence.
+        self.text.set_text(names::sentence(title));
         id
     }
 
@@ -181,7 +183,7 @@ impl StatusBar {
         self.running.retain(|running| *running != id);
         if self.running.is_empty() {
             self.downloads.clear();
-            self.text.set_text("ready");
+            self.text.set_text("Ready");
             self.progress.set_hidden(true);
         }
     }
@@ -195,14 +197,14 @@ impl StatusBar {
         match event {
             Event::IndexChunk { done, total } => {
                 self.text
-                    .set_text(format!("package list {done} of {total}"));
+                    .set_text(format!("Package list {done} of {total}"));
                 self.show_progress(done.lossy_convert(), total.lossy_convert());
             }
             Event::DownloadStarted {
                 package,
                 total_bytes,
             } => {
-                self.text.set_text(format!("downloading {package}"));
+                self.text.set_text(format!("Downloading {package}"));
                 self.downloads
                     .insert(package, (0, total_bytes.unwrap_or(0)));
                 self.show_downloads();
@@ -220,10 +222,10 @@ impl StatusBar {
                 self.show_downloads();
             }
             Event::Installed { package } => {
-                self.text.set_text(format!("installed {package}"));
+                self.text.set_text(format!("Installed {package}"));
             }
             Event::Removed { package } => {
-                self.text.set_text(format!("removed {package}"));
+                self.text.set_text(format!("Removed {package}"));
             }
         }
     }

@@ -93,7 +93,7 @@ impl Setup for ConfigPicker {
         self.subtitle.place().t(PAD + 28.0).l(PAD).r(PAD).h(16);
 
         style::dim(self.mine_head);
-        self.mine_head.set_text("mine");
+        self.mine_head.set_text("Mine");
         self.mine_head
             .place()
             .t(PAD + 58.0)
@@ -157,9 +157,9 @@ impl ConfigPicker {
             self.lines.len()
         ));
         self.apply.set_text(match taken {
-            0 => "apply nothing".to_owned(),
-            1 => "apply 1 value".to_owned(),
-            _ => format!("apply {taken} values"),
+            0 => "Apply nothing".to_owned(),
+            1 => "Apply 1 value".to_owned(),
+            _ => format!("Apply {taken} values"),
         });
     }
 }
@@ -272,7 +272,7 @@ impl PickCell {
 /// An empty value is a real value, a blank button would read as broken.
 fn shown(value: &str) -> String {
     if value.is_empty() {
-        "empty".to_owned()
+        "Empty".to_owned()
     } else {
         value.to_owned()
     }

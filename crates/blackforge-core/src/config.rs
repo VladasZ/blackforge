@@ -24,6 +24,7 @@ const MIN_SHARED: usize = 4;
 const TYPE_PREFIX: &str = "# Setting type:";
 const DEFAULT_PREFIX: &str = "# Default value:";
 const ACCEPTABLE_PREFIX: &str = "# Acceptable value";
+const MULTIPLE_PREFIX: &str = "# Multiple values can be set";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Setting {
@@ -34,13 +35,65 @@ pub struct Setting {
     pub setting_type: Option<String>,
     pub default: Option<String>,
     pub acceptable: Option<String>,
+    /// The file says several of the accepted values can be set at once.
+    multiple: bool,
     line: usize,
+}
+
+/// What a setting accepts, read from the comments `BepInEx` writes above it.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Accepted {
+    /// One of the values, or several of them split by commas when `multiple`.
+    Values { values: Vec<String>, multiple: bool },
+    /// A number from `min` to `max`, both included.
+    Range { min: f64, max: f64 },
+}
+
+impl Accepted {
+    /// The value is inside the range. A list of values takes any text, the
+    /// window only offers the listed ones.
+    pub fn allows(&self, value: &str) -> bool {
+        match self {
+            Self::Values { .. } => true,
+            Self::Range { min, max } => value
+                .trim()
+                .parse::<f64>()
+                .is_ok_and(|number| (*min..=*max).contains(&number)),
+        }
+    }
+}
+
+/// The values of a setting that takes several at once, `Warn, Error`.
+pub fn split_values(value: &str) -> Vec<&str> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect()
 }
 
 impl Setting {
     /// The value as on or off, `None` when the setting is not a boolean.
     /// `BepInEx` names the type in a comment. A file written by hand has no
     /// such comment, there the value alone decides.
+    /// What the file says the setting accepts, `None` when it says nothing
+    /// the window can use.
+    pub fn accepted(&self) -> Option<Accepted> {
+        let text = self.acceptable.as_deref()?;
+        if let Some(range) = text.strip_prefix("From ") {
+            let (min, max) = range.split_once(" to ")?;
+            return Some(Accepted::Range {
+                min: min.trim().parse().ok()?,
+                max: max.trim().parse().ok()?,
+            });
+        }
+        let values: Vec<String> = split_values(text).into_iter().map(str::to_owned).collect();
+        (!values.is_empty()).then_some(Accepted::Values {
+            values,
+            multiple: self.multiple,
+        })
+    }
+
     pub fn as_bool(&self) -> Option<bool> {
         let boolean = self
             .setting_type
@@ -99,6 +152,7 @@ impl ConfigFile {
                     setting_type,
                     default,
                     acceptable,
+                    multiple,
                 } = take(&mut pending);
                 settings.push(Setting {
                     section: section.clone(),
@@ -108,6 +162,7 @@ impl ConfigFile {
                     setting_type,
                     default,
                     acceptable,
+                    multiple,
                     line: at,
                 });
             } else if line.is_empty() {
@@ -178,6 +233,7 @@ struct Pending {
     setting_type: Option<String>,
     default: Option<String>,
     acceptable: Option<String>,
+    multiple: bool,
 }
 
 impl Pending {
@@ -188,6 +244,8 @@ impl Pending {
             self.default = Some(text.trim().to_owned());
         } else if line.starts_with(ACCEPTABLE_PREFIX) {
             self.acceptable = line.split_once(':').map(|(_, text)| text.trim().to_owned());
+        } else if line.starts_with(MULTIPLE_PREFIX) {
+            self.multiple = true;
         }
     }
 }
@@ -324,6 +382,19 @@ mod tests {
             "# Acceptable value range: From 1 to 10",
             "Count = 5",
             "",
+            "## What to log.",
+            "# Setting type: LogLevel",
+            "# Default value: Warning, Error",
+            "# Acceptable values: None, Error, Warning, All",
+            "# Multiple values can be set at the same time by separating them with , (e.g. Debug, Warning)",
+            "Levels = Warning, Error",
+            "",
+            "## Where it goes.",
+            "# Setting type: Target",
+            "# Default value: Disk",
+            "# Acceptable values: Disk, Console",
+            "Target = Disk",
+            "",
         ]
         .join("\r\n")
     }
@@ -332,7 +403,7 @@ mod tests {
     fn reads_settings_with_their_comments() -> Result<()> {
         let config = ConfigFile::parse(&sample());
         let settings = config.settings();
-        assert_eq!(settings.len(), 2);
+        assert_eq!(settings.len(), 4);
         let enabled = config.get("general", "enabled")?;
         assert_eq!(enabled.value, "true");
         assert_eq!(enabled.description, ["Turns the mod on.", "Second line."]);
@@ -340,6 +411,45 @@ mod tests {
         let count = config.get("Limits", "Count")?;
         assert_eq!(count.default.as_deref(), Some("5"));
         assert_eq!(count.acceptable.as_deref(), Some("From 1 to 10"));
+        Ok(())
+    }
+
+    #[test]
+    fn reads_what_a_setting_accepts() -> Result<()> {
+        let config = ConfigFile::parse(&sample());
+        let count = config.get("Limits", "Count")?.accepted();
+        assert_eq!(
+            count,
+            Some(Accepted::Range {
+                min: 1.0,
+                max: 10.0
+            })
+        );
+        let range = count.unwrap_or(Accepted::Range { min: 0.0, max: 0.0 });
+        assert!(range.allows("10"));
+        assert!(range.allows(" 1.5 "));
+        assert!(!range.allows("11"));
+        assert!(!range.allows("many"));
+        let levels = config.get("Limits", "Levels")?;
+        assert_eq!(
+            levels.accepted(),
+            Some(Accepted::Values {
+                values: ["None", "Error", "Warning", "All"]
+                    .map(str::to_owned)
+                    .to_vec(),
+                multiple: true,
+            })
+        );
+        assert_eq!(split_values(&levels.value), ["Warning", "Error"]);
+        let target = config.get("Limits", "Target")?.accepted();
+        assert!(matches!(
+            target,
+            Some(Accepted::Values {
+                multiple: false,
+                ..
+            })
+        ));
+        assert_eq!(config.get("General", "Enabled")?.accepted(), None);
         Ok(())
     }
 

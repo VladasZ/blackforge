@@ -2237,7 +2237,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 [[package]]
 name = "hilen"
 version = "0.1.0"
-source = "git+https://github.com/hilen/hilen?rev=cbf588e0484402112cfc1bcd636b403ba2d47aed#cbf588e0484402112cfc1bcd636b403ba2d47aed"
+source = "git+https://github.com/hilen/hilen?rev=ba4f98150a27cebb0e63ead516384f3abb66c71b#ba4f98150a27cebb0e63ead516384f3abb66c71b"
 dependencies = [
  "aes-gcm",
  "android_logger",
@@ -2323,7 +2323,7 @@ dependencies = [
 [[package]]
 name = "hilen-pixels"
 version = "0.1.0"
-source = "git+https://github.com/hilen/hilen?rev=cbf588e0484402112cfc1bcd636b403ba2d47aed#cbf588e0484402112cfc1bcd636b403ba2d47aed"
+source = "git+https://github.com/hilen/hilen?rev=ba4f98150a27cebb0e63ead516384f3abb66c71b#ba4f98150a27cebb0e63ead516384f3abb66c71b"
 dependencies = [
  "glam",
  "tiny-skia 0.12.0",
@@ -2332,7 +2332,7 @@ dependencies = [
 [[package]]
 name = "hilen-server"
 version = "0.1.0"
-source = "git+https://github.com/hilen/hilen?rev=cbf588e0484402112cfc1bcd636b403ba2d47aed#cbf588e0484402112cfc1bcd636b403ba2d47aed"
+source = "git+https://github.com/hilen/hilen?rev=ba4f98150a27cebb0e63ead516384f3abb66c71b#ba4f98150a27cebb0e63ead516384f3abb66c71b"
 dependencies = [
  "anyhow",
  "axum",
@@ -4382,7 +4382,7 @@ dependencies = [
 [[package]]
 name = "plat"
 version = "0.10.0"
-source = "git+https://github.com/hilen/hilen?rev=cbf588e0484402112cfc1bcd636b403ba2d47aed#cbf588e0484402112cfc1bcd636b403ba2d47aed"
+source = "git+https://github.com/hilen/hilen?rev=ba4f98150a27cebb0e63ead516384f3abb66c71b#ba4f98150a27cebb0e63ead516384f3abb66c71b"
 dependencies = [
  "cfg_aliases",
 ]
@@ -6727,7 +6727,7 @@ checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
 [[package]]
 name = "ui-proc"
 version = "0.1.0"
-source = "git+https://github.com/hilen/hilen?rev=cbf588e0484402112cfc1bcd636b403ba2d47aed#cbf588e0484402112cfc1bcd636b403ba2d47aed"
+source = "git+https://github.com/hilen/hilen?rev=ba4f98150a27cebb0e63ead516384f3abb66c71b#ba4f98150a27cebb0e63ead516384f3abb66c71b"
 dependencies = [
  "parking_lot",
  "quote",

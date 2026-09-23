@@ -25,8 +25,8 @@ dirs = "7.0"
 dotenvy = "0.15"
 flate2 = "1.1"
 futures-util = "0.3"
-hilen = { git = "https://github.com/hilen/hilen", rev = "cbf588e0484402112cfc1bcd636b403ba2d47aed" }
-hilen-server = { git = "https://github.com/hilen/hilen", rev = "cbf588e0484402112cfc1bcd636b403ba2d47aed" }
+hilen = { git = "https://github.com/hilen/hilen", rev = "ba4f98150a27cebb0e63ead516384f3abb66c71b" }
+hilen-server = { git = "https://github.com/hilen/hilen", rev = "ba4f98150a27cebb0e63ead516384f3abb66c71b" }
 image = { version = "0.25", default-features = false, features = ["png"] }
 indicatif = "0.18"
 log = "0.4"

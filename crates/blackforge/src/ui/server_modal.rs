@@ -92,7 +92,7 @@ impl Setup for ServerModal {
         );
         self.hint.place().t(PAD + 30.0).l(PAD).r(PAD).h(34);
 
-        style::field(self.name, "server name");
+        style::field(self.name, "Server name");
         self.name
             .place()
             .t(PAD + 76.0)

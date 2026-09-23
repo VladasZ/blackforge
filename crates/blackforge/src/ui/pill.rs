@@ -18,6 +18,7 @@ pub struct Pill {
     #[init]
     icon: ImageView,
     label: Label,
+    note: Label,
 }
 
 impl Setup for Pill {
@@ -30,6 +31,11 @@ impl Setup for Pill {
         self.label.set_text_size(12).set_text_color(colors::FG);
         self.label.set_alignment(TextAlignment::Left);
         self.label.set_color(colors::CLEAR);
+
+        self.note.set_text_size(12).set_text_color(colors::ACCENT);
+        self.note.set_alignment(TextAlignment::Left);
+        self.note.set_color(colors::CLEAR);
+        self.note.set_hidden(true);
     }
 }
 
@@ -56,6 +62,25 @@ impl Pill {
             .b(0)
             .w(text_width);
         text_left + text_width + PAD
+    }
+
+    /// The orange look with a short note after the text, like `missing`, for
+    /// a fact the user has to act on. Returns the width like `set`.
+    pub fn set_marked(self: Weak<Self>, icon: &str, text: &str, note: &str) -> f32 {
+        self.set_border_color(colors::ACCENT);
+        self.set_border_width(1);
+        let text_end = self.set(icon, text) - PAD;
+        self.note.set_text(note);
+        self.note.set_hidden(false);
+        let note_width = self.note.content_size().width;
+        self.note
+            .place()
+            .clear()
+            .l(text_end + GAP)
+            .t(0)
+            .b(0)
+            .w(note_width);
+        text_end + GAP + note_width + PAD
     }
 }
 

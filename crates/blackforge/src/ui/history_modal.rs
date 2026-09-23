@@ -194,7 +194,7 @@ impl Setup for HistoryCell {
 
         style::dim(self.current);
         self.current.set_alignment(TextAlignment::Right);
-        self.current.set_text("installed now");
+        self.current.set_text("Installed now");
         self.current.place().r(16).t(20).size(RESTORE_W, 16);
 
         style::ghost(self.restore, "Restore");
@@ -234,9 +234,9 @@ impl HistoryCell {
         self.when.set_tooltip(time::full(row.created));
         self.detail
             .set_text(match (row.restored_from, row.applied) {
-                (Some(from), _) => format!("restored revision {from}: {}", row.summary),
+                (Some(from), _) => format!("Restored revision {from}: {}", row.summary),
                 (None, false) => format!(
-                    "kept from a conflict, never installed by itself: {}",
+                    "Kept from a conflict, never installed by itself: {}",
                     row.summary
                 ),
                 (None, true) => row.summary.to_string(),

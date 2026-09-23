@@ -3,7 +3,7 @@
 //! edits or removes their own servers. The address and the password of a
 //! server are no part of this, players join through the game as before.
 
-use blackforge_api::servers::Server;
+use blackforge_api::servers::{Server, ServerMod};
 use blackforge_core::servers::{Needs, ServerInstall, fetch, needs};
 use hilen::{
     refs::{Weak, weak_from_ref},
@@ -16,7 +16,7 @@ use hilen::{
 use crate::{
     backend, social,
     ui::{
-        colors, names,
+        busy, colors, names,
         pill::{self, Pill},
         server_modal::ServerModal,
         style, time, toast,
@@ -63,7 +63,7 @@ impl Setup for ServersPage {
 
         style::dim(self.subtitle);
         self.subtitle
-            .set_text("the mods a server needs, installed with one click");
+            .set_text("The mods a server needs, installed with one click");
         self.subtitle.place().t(56).l(style::PAGE_PAD).size(600, 16);
 
         style::primary(self.register, "Register a server");
@@ -100,7 +100,7 @@ impl Setup for ServersPage {
 
 impl ServersPage {
     fn refresh(self: Weak<Self>) {
-        self.note.set_text("loading");
+        self.note.set_text("Loading");
         self.note.set_hidden(false);
 
         backend::load(
@@ -133,7 +133,7 @@ impl ServersPage {
                 match result {
                     Ok(rows) => self.set_rows(rows),
                     Err(error) => {
-                        self.note.set_text("the servers did not load");
+                        self.note.set_text("The servers did not load");
                         toast::failure(&error);
                     }
                 }
@@ -171,11 +171,12 @@ impl ServersPage {
         });
     }
 
-    fn install(self: Weak<Self>, index: usize) {
+    fn install(self: Weak<Self>, index: usize, button: Weak<Button>) {
         let Some(row) = self.rows.get(index) else {
             return;
         };
         let server = row.server.clone();
+        busy::press(button, "Installing...");
         backend::change(
             &format!("installing the mods of {}", server.name),
             move |forge, progress| async move {
@@ -310,7 +311,7 @@ impl Setup for ServerCell {
         // Plain text with a check, no box, so it does not read as a button.
         self.ready_icon.set_image("check.svg");
         self.ready_icon.place().r(16.0 + 84.0).t(28).size(16, 16);
-        self.ready.set_text("all installed");
+        self.ready.set_text("All installed");
         self.ready.set_text_size(13).set_text_color(colors::OK);
         self.ready.set_alignment(TextAlignment::Left);
         self.ready.set_color(colors::CLEAR);
@@ -324,9 +325,10 @@ impl Setup for ServerCell {
             .size(INSTALL_WIDTH, style::BUTTON_H);
         self.install.on_tap(move || {
             if self.page.is_ok() {
-                self.page.install(self.index);
+                self.page.install(self.index, self.install);
             }
         });
+        busy::track(self.install);
 
         style::ghost(self.edit, "Edit");
         self.edit
@@ -377,7 +379,7 @@ impl ServerCell {
             time::ago(server.updated)
         ));
         self.owner.set_tooltip(time::full(server.updated));
-        self.show_mods(server, width);
+        self.show_mods(server, &row.needs, width);
 
         let ready = row.needs.is_empty();
         self.ready.set_hidden(!ready);
@@ -392,22 +394,29 @@ impl ServerCell {
     }
 
     /// One pill per mod, readable name and version, in 2 rows at most. When
-    /// not all of them fit, the last place goes to "+5 more".
-    fn show_mods(mut self: Weak<Self>, server: &Server, width: f32) {
+    /// not all of them fit, the last place goes to "+5 more". A mod the
+    /// profile lacks is marked, the ones it has stay plain.
+    fn show_mods(mut self: Weak<Self>, server: &Server, needs: &Needs, width: f32) {
         for mut chip in self.chips.drain(..) {
             chip.remove_from_superview();
         }
-        let texts: Vec<String> = server
+        let texts: Vec<(String, Option<&str>)> = server
             .mods
             .iter()
-            .map(|server_mod| format!("{} {}", names::title(&server_mod.id), server_mod.version))
+            .map(|server_mod| {
+                let text = format!("{} {}", names::title(&server_mod.id), server_mod.version);
+                (text, lacks(needs, server_mod))
+            })
             .collect();
         let rows_end = 2.0 * pill::HEIGHT + PILL_GAP;
         let (mut x, mut y) = (0.0, 0.0);
-        for (shown, text) in texts.iter().enumerate() {
+        for (shown, (text, note)) in texts.iter().enumerate() {
             let left = texts.len() - shown;
             let chip = self.mods.add_view::<Pill>();
-            let chip_width = chip.set("pill_version.svg", text);
+            let chip_width = match note {
+                Some(note) => chip.set_marked("pill_version.svg", text, note),
+                None => chip.set("pill_version.svg", text),
+            };
             let (at_x, at_y) = flow(x, y, chip_width, width);
             // A pill that is not the last one leaves room for "+n more".
             let (_, more_y) = flow(at_x + chip_width + PILL_GAP, at_y, MORE_WIDTH, width);
@@ -425,6 +434,23 @@ impl ServerCell {
             x = at_x + chip_width + PILL_GAP;
             y = at_y;
         }
+    }
+}
+
+/// The note of a mod the profile lacks for the server, `None` when it has it.
+fn lacks(needs: &Needs, server_mod: &ServerMod) -> Option<&'static str> {
+    if needs.missing.contains(server_mod) {
+        Some("missing")
+    } else if needs
+        .other_version
+        .iter()
+        .any(|(needed, _)| needed == server_mod)
+    {
+        Some("wrong version")
+    } else if needs.disabled.contains(server_mod) {
+        Some("disabled")
+    } else {
+        None
     }
 }
 

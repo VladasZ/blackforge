@@ -10,7 +10,6 @@ use blackforge_core::{Error, social::client::SocialClient};
 use hilen::{
     Event,
     dispatch::after,
-    login::{GoogleLogin, GoogleLoginButton},
     refs::{Weak, weak_from_ref},
     store::SessionStore,
     ui::{
@@ -26,6 +25,7 @@ use crate::{
         colors,
         friend_search::FriendSearch,
         nav_item::NavItem,
+        sign_in_card::{self, SignInCard},
         style, toast,
     },
 };
@@ -86,7 +86,7 @@ pub struct FriendsPage {
     title: Label,
     subtitle: Label,
     sign_out: Button,
-    login: GoogleLoginButton,
+    sign_in: SignInCard,
     name_field: TextField,
     name_save: Button,
     name_note: Label,
@@ -112,18 +112,18 @@ impl Setup for FriendsPage {
             .size(90, style::BUTTON_H);
         self.sign_out.on_tap(move || self.sign_out());
 
-        self.login
+        self.sign_in
             .place()
-            .t(style::HEADER + 8.0)
+            .t(style::HEADER)
             .l(style::PAGE_PAD)
-            .size(240, 40);
-        self.login.logged_in.val(move |_| {
+            .r(style::PAGE_PAD)
+            .h(sign_in_card::HEIGHT);
+        self.sign_in.signed_in.sub(move || {
             social::share_profile();
             self.load();
         });
-        self.login.failed.val(toast::error);
 
-        style::field(self.name_field, "pick a username");
+        style::field(self.name_field, "Pick a username");
         self.name_field
             .place()
             .t(style::HEADER + 8.0)
@@ -194,7 +194,7 @@ impl FriendsPage {
     fn show(mut self: Weak<Self>, state: State) {
         self.state = state;
 
-        self.login.set_hidden(state != State::SignedOut);
+        self.sign_in.set_hidden(state != State::SignedOut);
         self.sign_out
             .set_hidden(matches!(state, State::SignedOut | State::Loading));
 
@@ -215,9 +215,9 @@ impl FriendsPage {
 
         // The friends state writes its own line, it knows the username.
         let text = match state {
-            State::Loading => "loading",
-            State::SignedOut => "sign in to see what your friends play with",
-            State::PickName => "one more step, your username",
+            State::Loading => "Loading",
+            State::SignedOut => "Sign in to see what your friends play with",
+            State::PickName => "One more step, your username",
             State::Friends => return,
         };
         self.subtitle.set_text(text);
@@ -251,7 +251,7 @@ impl FriendsPage {
     }
 
     fn show_friends(mut self: Weak<Self>, name: &str) {
-        self.subtitle.set_text(format!("signed in as {name}"));
+        self.subtitle.set_text(format!("Signed in as {name}"));
         self.show(State::Friends);
         self.refresh();
 
@@ -371,11 +371,7 @@ impl FriendsPage {
     }
 
     fn sign_out(self: Weak<Self>) {
-        GoogleLogin::logout(move |result| {
-            if let Err(error) = result {
-                toast::failure(&error);
-            }
-            social::signed_out();
+        social::sign_out(move || {
             if self.is_ok() {
                 self.load();
             }
@@ -510,7 +506,7 @@ impl FriendCell {
         // The dot on the picture: a request that waits for me, or in game.
         match row {
             Row::Incoming(_) => {
-                self.detail.set_text("wants to be your friend");
+                self.detail.set_text("Wants to be your friend");
                 self.avatar.set_status(Some(colors::WARN));
                 style::primary(self.primary, "Accept");
                 style::ghost(self.secondary, "Decline");
@@ -518,14 +514,14 @@ impl FriendCell {
             }
             Row::Friend { in_game, .. } => {
                 self.detail
-                    .set_text(if *in_game { "in game" } else { "not in game" });
+                    .set_text(if *in_game { "In game" } else { "Not in game" });
                 self.avatar.set_status(in_game.then_some(colors::OK));
                 style::ghost(self.primary, "Mods");
                 style::ghost(self.secondary, "Unfriend");
                 self.primary.set_hidden(false);
             }
             Row::Outgoing(_) => {
-                self.detail.set_text("request sent, waiting for an answer");
+                self.detail.set_text("Request sent, waiting for an answer");
                 self.avatar.set_status(None);
                 style::ghost(self.secondary, "Cancel");
                 self.primary.set_hidden(true);

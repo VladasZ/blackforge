@@ -19,11 +19,12 @@ That data is separate from what friends see; see [sync.md](sync.md).
   - `secret.rs` decides which settings never leave the computer.
   - `shared.rs` builds what a profile shows to friends.
   - `picker.rs` is the merge behind the "copy config" dialog.
-- `crates/blackforge/src/social.rs` is the glue in the window: who is signed in, the
-  uploads, the in game reports.
+- `crates/blackforge/src/social.rs` is the glue in the window: who is signed in,
+  sign out, the uploads, the in game reports.
 - `crates/blackforge/src/ui` has `friends_page.rs`, `friend_search.rs`,
-  `friend_mods_page.rs`, `config_picker.rs` and `avatar.rs`. The Friends page has two
-  tabs. "My friends" is the list of friends and requests. "Find people" is the search,
+  `friend_mods_page.rs`, `config_picker.rs`, `avatar.rs` and `sign_in_card.rs`,
+  the card the Friends page shows while signed out. The Account card of the Settings
+  page is `account_card.rs`. The Friends page has two tabs. "My friends" is the list of friends and requests. "Find people" is the search,
   the only place a request is sent from. The two are never mixed in one list.
 
 The login itself is a part of the hilen engine, the `login` feature on the app side and

@@ -3,7 +3,7 @@
 
 use hilen::{
     refs::Weak,
-    ui::{Label, Setup, Switch, TextField, ViewData, view},
+    ui::{Label, Setup, Switch, TextField, VerticalAlignment, ViewData, view},
 };
 
 use crate::{
@@ -11,13 +11,13 @@ use crate::{
     ui::{style, toast},
 };
 
-pub const HEIGHT: f32 = 180.0;
-
 const PAD: f32 = 16.0;
 const ARGS_T: f32 = 72.0;
 const KEEP_T: f32 = ARGS_T + 20.0 + style::FIELD_H + 14.0;
 const KEEP_LABEL_L: f32 = PAD + 56.0;
 const KEEP_LABEL_W: f32 = 220.0;
+/// The hint starts under the switch label.
+const HINT_T: f32 = KEEP_T + 26.0;
 
 #[view]
 pub struct GamePanel {
@@ -36,7 +36,7 @@ impl Setup for GamePanel {
         style::card(self);
 
         style::dim(self.folder_title);
-        self.folder_title.set_text("game folder");
+        self.folder_title.set_text("Game folder");
         self.folder_title.place().t(PAD).l(PAD).size(300, 16);
 
         style::body(self.folder);
@@ -45,7 +45,7 @@ impl Setup for GamePanel {
 
         style::dim(self.args_title);
         self.args_title
-            .set_text("extra arguments for the game, split on spaces");
+            .set_text("Extra arguments for the game, split on spaces");
         self.args_title.place().t(ARGS_T).l(PAD).size(400, 16);
 
         style::field(self.args, "-console");
@@ -62,7 +62,7 @@ impl Setup for GamePanel {
         self.keep.on_change(save_keep_achievements);
 
         style::body(self.keep_label);
-        self.keep_label.set_text("keep achievements with mods");
+        self.keep_label.set_text("Keep achievements with mods");
         self.keep_label
             .place()
             .t(KEEP_T)
@@ -70,15 +70,11 @@ impl Setup for GamePanel {
             .size(KEEP_LABEL_W, 24);
 
         style::dim(self.keep_hint);
-        self.keep_hint.set_ellipsize(true);
+        self.keep_hint.set_multiline(true);
         self.keep_hint
-            .set_text("the game blocks them when mods are loaded, real cheats still block them");
+            .set_vertical_alignment(VerticalAlignment::Top);
         self.keep_hint
-            .place()
-            .t(KEEP_T + 4.0)
-            .l(KEEP_LABEL_L + KEEP_LABEL_W + 8.0)
-            .r(PAD)
-            .h(16);
+            .set_text("The game blocks them when mods are loaded, real cheats still block them");
 
         self.locate();
         self.load_keep_achievements();
@@ -86,6 +82,22 @@ impl Setup for GamePanel {
 }
 
 impl GamePanel {
+    /// Wraps the hint at `width` and returns the height the card needs.
+    pub fn fit(self: Weak<Self>, width: f32) -> f32 {
+        let hint = self
+            .keep_hint
+            .size_for_width(width - KEEP_LABEL_L - PAD)
+            .height;
+        self.keep_hint
+            .place()
+            .clear()
+            .t(HINT_T)
+            .l(KEEP_LABEL_L)
+            .r(PAD)
+            .h(hint);
+        HINT_T + hint + PAD
+    }
+
     fn locate(self: Weak<Self>) {
         backend::load(
             "looking for the game",
@@ -104,7 +116,7 @@ impl GamePanel {
                         self.folder.set_text(folder);
                     }
                     Err(error) => {
-                        self.folder.set_text("not found");
+                        self.folder.set_text("Not found");
                         toast::failure(&error);
                     }
                 }

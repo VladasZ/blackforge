@@ -24,7 +24,7 @@ use hilen::{
 use crate::{
     backend, social,
     ui::{
-        colors,
+        busy, colors,
         config_picker::{ConfigPicker, PickerFile, PickerInput},
         hover,
         mod_icon::ModIcon,
@@ -118,7 +118,7 @@ impl FriendModsPage {
     }
 
     fn refresh(self: Weak<Self>) {
-        self.subtitle.set_text("loading");
+        self.subtitle.set_text("Loading");
         let friend = self.friend.clone();
 
         backend::load(
@@ -164,7 +164,7 @@ impl FriendModsPage {
                 match result {
                     Ok((shared, rows)) => self.set_rows(shared, rows),
                     Err(error) => {
-                        self.subtitle.set_text("the mods did not load");
+                        self.subtitle.set_text("The mods did not load");
                         toast::failure(&error);
                     }
                 }
@@ -175,7 +175,7 @@ impl FriendModsPage {
     fn set_rows(mut self: Weak<Self>, shared: SharedProfile, rows: Vec<ModRow>) {
         let missing = rows.iter().filter(|row| !row.installed).count();
         self.subtitle.set_text(match (rows.len(), missing) {
-            (0, _) => "nothing shared yet".to_owned(),
+            (0, _) => "Nothing shared yet".to_owned(),
             (count, 0) => format!("{count} mods, you have all of them"),
             (count, missing) => format!("{count} mods, you do not have {missing} of them"),
         });
@@ -184,12 +184,12 @@ impl FriendModsPage {
         self.table.reload_data();
     }
 
-    fn add(self: Weak<Self>, index: usize) {
+    fn add(self: Weak<Self>, index: usize, button: Weak<Button>) {
         let Some(row) = self.rows.get(index) else {
             return;
         };
         let id = row.id.clone();
-
+        busy::press(button, "Adding...");
         backend::change(
             "adding the mod",
             |forge, progress| async move {
@@ -211,7 +211,7 @@ impl FriendModsPage {
     }
 
     /// Reads my side of every shared file of the mod and opens the picker.
-    fn copy_config(self: Weak<Self>, index: usize) {
+    fn copy_config(self: Weak<Self>, index: usize, button: Weak<Button>) {
         let Some(row) = self.rows.get(index) else {
             return;
         };
@@ -248,28 +248,28 @@ impl FriendModsPage {
                 }
                 match result {
                     Ok(files) if files.is_empty() => toast::info("your settings already match"),
-                    Ok(files) => self.pick(mod_name, files),
+                    Ok(files) => self.pick(mod_name, files, button),
                     Err(error) => toast::failure(&error),
                 }
             },
         );
     }
 
-    fn pick(self: Weak<Self>, mod_name: String, files: Vec<PickerFile>) {
+    fn pick(self: Weak<Self>, mod_name: String, files: Vec<PickerFile>, button: Weak<Button>) {
         let input = PickerInput {
             friend: self.friend.clone(),
             mod_name,
             files,
         };
-        ConfigPicker::show_modally_with_input(input, |picked| {
+        ConfigPicker::show_modally_with_input(input, move |picked| {
             if let Some(files) = picked {
-                write_picks(files);
+                write_picks(files, button);
             }
         });
     }
 }
 
-fn write_picks(files: Vec<PickerFile>) {
+fn write_picks(files: Vec<PickerFile>, button: Weak<Button>) {
     if !files
         .iter()
         .flat_map(|file| &file.rows)
@@ -278,6 +278,7 @@ fn write_picks(files: Vec<PickerFile>) {
         return toast::info("nothing was picked, nothing changed");
     }
 
+    busy::press(button, "Copying...");
     backend::change(
         "copying the settings",
         |forge, progress| async move {
@@ -420,7 +421,7 @@ impl Setup for ModCell {
             .h(36);
 
         // The same rectangle as the add button, so the column reads as one.
-        self.installed.set_text("installed");
+        self.installed.set_text("Installed");
         self.installed.set_text_size(13).set_text_color(colors::OK);
         self.installed.set_alignment(TextAlignment::Center);
         self.installed.set_color(colors::OK_BG);
@@ -439,9 +440,10 @@ impl Setup for ModCell {
             .size(BUTTON_WIDTH, style::BUTTON_H);
         self.add.on_tap(move || {
             if self.page.is_ok() {
-                self.page.add(self.index);
+                self.page.add(self.index, self.add);
             }
         });
+        busy::track(self.add);
 
         style::ghost(self.copy_config, "Copy config");
         self.copy_config
@@ -451,9 +453,10 @@ impl Setup for ModCell {
             .size(BUTTON_WIDTH, style::BUTTON_H);
         self.copy_config.on_tap(move || {
             if self.page.is_ok() {
-                self.page.copy_config(self.index);
+                self.page.copy_config(self.index, self.copy_config);
             }
         });
+        busy::track(self.copy_config);
 
         // The wash says the row can be clicked, the click opens the details.
         hover::row(self);

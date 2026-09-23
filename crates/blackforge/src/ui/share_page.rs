@@ -13,7 +13,7 @@ use tokio::fs;
 
 use crate::{
     backend,
-    ui::{mods_page::sync_summary, style, toast},
+    ui::{busy, mods_page::sync_summary, style, toast},
 };
 
 const PAD: f32 = 20.0;
@@ -37,6 +37,12 @@ fn card_text(label: Weak<Label>, text: &str) {
     label.place().t(42).l(PAD).r(PAD).h(16);
 }
 
+/// A left aligned label draws its text a few points inside its frame. The
+/// buttons and the switch of a card start where that text starts.
+fn controls_left(label: Weak<Label>) -> f32 {
+    PAD + label.text_inset()
+}
+
 #[view]
 pub struct SharePage {
     #[init]
@@ -54,7 +60,7 @@ impl Setup for SharePage {
 
         style::dim(self.subtitle);
         self.subtitle
-            .set_text("give your mods to a friend or to a server");
+            .set_text("Give your mods to a friend or to a server");
         self.subtitle.place().t(56).l(style::PAGE_PAD).size(500, 16);
 
         self.place_code(CODE_SHORT);
@@ -105,11 +111,15 @@ impl Setup for CodeCard {
         card_title(self.title, "Share as a code");
         card_text(
             self.text,
-            "the code works in r2modman, Gale and blackforge, and it expires within hours",
+            "The code works in r2modman, Gale and blackforge, and it expires within hours",
         );
 
         style::primary(self.create, "Create a code");
-        self.create.place().b(16).l(PAD).size(130, style::BUTTON_H);
+        self.create
+            .place()
+            .b(16)
+            .l(controls_left(self.text))
+            .size(130, style::BUTTON_H);
         self.create.on_tap(move || self.create_code());
 
         style::body(self.code);
@@ -121,7 +131,7 @@ impl Setup for CodeCard {
         self.copy
             .place()
             .b(16)
-            .l(PAD + 138.0)
+            .l(controls_left(self.text) + 138.0)
             .size(76, style::BUTTON_H);
         self.copy
             .on_tap(move || match Clipboard::set_text(self.code.text()) {
@@ -170,11 +180,15 @@ impl Setup for FileCard {
         card_title(self.title, "Export to a file");
         card_text(
             self.text,
-            "writes default.r2z into the folder you pick, for a mod set too large for a code",
+            "Writes default.r2z into the folder you pick, for a mod set too large for a code",
         );
 
         style::ghost(self.export, "Export file");
-        self.export.place().b(16).l(PAD).size(130, style::BUTTON_H);
+        self.export
+            .place()
+            .b(16)
+            .l(controls_left(self.text))
+            .size(130, style::BUTTON_H);
         self.export.on_tap(|| {
             spawn(async {
                 let picked = Paths::pick_folder().await;
@@ -218,23 +232,31 @@ impl Setup for DeployCard {
         card_title(self.title, "Deploy to a folder");
         card_text(
             self.text,
-            "writes the mods and their configs as a plain folder, for a rented or Docker server",
+            "Writes the mods and their configs as a plain folder, for a rented or Docker server",
         );
 
-        self.overwrite.place().t(72).l(PAD).size(44, 24);
+        self.overwrite
+            .place()
+            .t(72)
+            .l(controls_left(self.text))
+            .size(44, 24);
 
         style::body(self.overwrite_label);
         self.overwrite_label
-            .set_text("replace configs that already exist at the target");
+            .set_text("Replace configs that already exist at the target");
         self.overwrite_label
             .place()
             .t(74)
-            .l(PAD + 56.0)
+            .l(controls_left(self.text) + 56.0)
             .r(PAD)
             .h(20);
 
         style::ghost(self.deploy, "Deploy to folder");
-        self.deploy.place().b(16).l(PAD).size(150, style::BUTTON_H);
+        self.deploy
+            .place()
+            .b(16)
+            .l(controls_left(self.text))
+            .size(150, style::BUTTON_H);
         self.deploy.on_tap(move || {
             let overwrite_configs = self.overwrite.on();
             spawn(async move {
@@ -243,6 +265,7 @@ impl Setup for DeployCard {
                     let Some(folder) = picked else {
                         return;
                     };
+                    busy::press(self.deploy, "Deploying...");
                     backend::change(
                         "deploying the mods",
                         move |forge, progress| async move {
@@ -270,5 +293,6 @@ impl Setup for DeployCard {
                 });
             });
         });
+        busy::track(self.deploy);
     }
 }
