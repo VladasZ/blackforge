@@ -30,6 +30,9 @@ only the doorstop loader. Launch points doorstop at the profile, so nothing
 is copied into the game folder. `deploy` is the exception, it writes a plain
 copy of a profile for a server that runs elsewhere.
 
+`BepInEx/plugins/blackforge-join` is the join button plugin, see `join.md`. It
+is written before every start of the Valheim client.
+
 `BepInEx/plugins/blackforge` is the app's own achievements plugin. It is not a
 package and is not in the lock.
 

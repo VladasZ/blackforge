@@ -19,7 +19,7 @@ use crate::{
     achievements,
     error::{Error, IoContext, Result},
     game::{GameDef, GameInstall, Target},
-    steam,
+    join, steam,
     util::exists,
 };
 
@@ -65,6 +65,8 @@ pub struct LaunchPlan {
     pub game_files: Vec<String>,
     /// Whether the achievements plugin goes into the profile first.
     pub keep_achievements: bool,
+    /// Whether the join button plugin goes into the profile first.
+    pub join_button: bool,
     /// The Steam app has to run before the start, see `steam`.
     pub needs_steam: bool,
 }
@@ -170,6 +172,7 @@ fn windows_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
             DOORSTOP_VERSION.to_owned(),
         ],
         keep_achievements: keeps_achievements(input),
+        join_button: join::applies_to(input.game),
         // Steam opens itself, the start goes through it.
         needs_steam: false,
     }
@@ -248,6 +251,7 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
             cwd,
             game_files: Vec::new(),
             keep_achievements: keeps_achievements(input),
+            join_button: join::applies_to(input.game),
             needs_steam: steam::needed(input.os, input.game.target),
         };
     }
@@ -258,17 +262,21 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
         cwd,
         game_files: Vec::new(),
         keep_achievements: keeps_achievements(input),
+        join_button: join::applies_to(input.game),
         needs_steam: steam::needed(input.os, input.game.target),
     }
 }
 
 /// Puts the files of a start in place. The achievements plugin goes into the
-/// profile or comes out of it. The Windows proxy files are copied into the game
-/// folder, the config goes in switched off, so a plain start from Steam still
-/// gives the game without mods, and `run` switches it on through the command
-/// line.
+/// profile or comes out of it, the join button plugin goes in. The Windows
+/// proxy files are copied into the game folder, the config goes in switched
+/// off, so a plain start from Steam still gives the game without mods, and
+/// `run` switches it on through the command line.
 pub async fn prepare(plan: &LaunchPlan, profile_dir: &Path) -> Result<()> {
     achievements::apply(profile_dir, plan.keep_achievements).await?;
+    if plan.join_button {
+        join::apply(profile_dir).await?;
+    }
     for name in &plan.game_files {
         let source = profile_dir.join(name);
         if !exists(&source).await {
@@ -393,6 +401,7 @@ mod tests {
         assert!(plan.env.is_empty());
         assert!(plan.game_files.is_empty());
         assert!(plan.keep_achievements);
+        assert!(plan.join_button);
         assert!(plan.needs_steam);
         Ok(())
     }
@@ -447,6 +456,7 @@ mod tests {
         );
         // A server has no achievements, the setting of the user is dropped.
         assert!(!plan.keep_achievements);
+        assert!(!plan.join_button);
         Ok(())
     }
 

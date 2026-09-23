@@ -26,3 +26,9 @@ web:
 plugin:
 	docker run --rm -v "$(CURDIR)/assets/achievements:/src" mcr.microsoft.com/dotnet/sdk:10.0 sh -c \
 		'mkdir /build && cp /src/Plugin.cs /src/BlackforgeAchievements.csproj /build/ && cd /build && dotnet build -c Release -o /out && cp /out/BlackforgeAchievements.dll /src/'
+
+# The join plugin compiles against the game, VALHEIM_MANAGED is the
+# valheim_Data/Managed folder of an installed Valheim.
+join-plugin:
+	docker run --rm -v "$(CURDIR)/assets/join:/src" -v "$(VALHEIM_MANAGED):/managed:ro" mcr.microsoft.com/dotnet/sdk:10.0 sh -c \
+		'mkdir /build && cp /src/Plugin.cs /src/BlackforgeJoin.csproj /build/ && cd /build && dotnet build -c Release -o /out -p:ValheimManaged=/managed && cp /out/BlackforgeJoin.dll /src/'

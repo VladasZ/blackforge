@@ -17,6 +17,7 @@ pub mod game;
 pub mod http;
 pub mod ident;
 pub mod install;
+pub mod join;
 pub mod launch;
 pub mod lock;
 pub mod manifest;
