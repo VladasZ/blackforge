@@ -4,17 +4,20 @@ A registered game server is a name and the mods a player needs to join it, with
 exact versions. A player opens the Servers page, sees every server, and one
 button installs what their profile lacks. Nobody types mod names by hand.
 
-The address and the password of a server are not part of this on purpose.
-Players join through the game as before, the list only carries the mods.
+The password of a server is never part of this, the game asks for it. A server
+of the join admin can also carry a join address. The app then gives it a join
+button in the Valheim menu, see `join.md`. Any other server carries only the
+mods.
 
 ## The parts
 
 - `crates/blackforge-api/src/servers.rs` holds the wire types and the one check
   both sides run, `validate`. A name is trimmed and at most 40 characters, a
-  server has 1 to 200 mods, every mod has an id and a version.
+  server has 1 to 200 mods, every mod has an id and a version. A join address
+  is an ipv4 address and a port, `normalize_address` checks it.
 - `backend/server/src/servers.rs` is the routes. Migration `0005` adds the
   `servers` table, one row per server, `mods` stored as the JSON the app sent.
-  The pair owner, game and name is unique.
+  The pair owner, game and name is unique. Migration `0007` adds `address`.
 - `crates/blackforge-core/src/servers.rs` is the client side with no window in
   it. `fetch` reads the public list over the plain HTTP client. `needs` compares
   a profile with a server, `Forge::install_server` applies the list.
@@ -25,15 +28,17 @@ Players join through the game as before, the list only carries the mods.
 
 - `GET /api/servers` is the whole list, sorted by name. It is public, no login,
   so a player can install the mods of a server before they ever sign in. Each
-  row has the id, the name, the game, the owner's username, the mods and the
-  time of the last save.
+  row has the id, the name, the game, the owner's username, the mods, the
+  time of the last save and the join address when there is one.
 - `POST /api/servers` registers one. Wants a login and a username.
 - `PUT /api/servers/{id}` and `DELETE /api/servers/{id}` change or remove an
   own server. A server of somebody else gets the same 404 as one that does not
   exist.
 
-The body of a save is `SaveServer`, the name, the game label and the mods. The
-answer of a save is the stored row.
+The body of a save is `SaveServer`, the name, the game label, the mods and the
+join address. No address field keeps the stored one, so an app from before the
+field does not wipe it. An empty address removes it. The answer of a save is the
+stored row.
 
 ## Rules of the feature
 
@@ -56,11 +61,15 @@ answer of a save is the stored row.
 - The window marks a row as mine by comparing the owner's username with
   `GET /api/me`. Signed out, no row is mine and the register button explains
   that registering needs an account.
+- Only `JOIN_ADMIN` in `crates/blackforge-api/src/servers.rs` may set a join
+  address, the save of anybody else with an address is refused. The form shows
+  the address field only to that account.
 - The window has no profiles, so a server is registered from the `default`
   profile. The CLI has no server commands.
 
 ## Tests
 
-`cargo test -p blackforge-api servers` covers the checks and the wire shape.
+`cargo test -p blackforge-api servers` covers the checks, the address and the
+wire shape.
 `cargo test -p blackforge-core servers` covers the compare of a profile with a
 server. The backend test checks that the writes refuse an anonymous request.

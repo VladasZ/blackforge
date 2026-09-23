@@ -1,10 +1,13 @@
 //! The form that registers a game server or edits one of mine: a name and a
 //! switch per mod of my profile. A ticked mod is required at the version my
 //! lock has, so editing after an update moves the server to the new version.
+//! The join admin also gets a field for the join address.
 
 use std::collections::HashMap;
 
-use blackforge_api::servers::{SaveServer, Server, ServerMod, normalize_name, validate};
+use blackforge_api::servers::{
+    SaveServer, Server, ServerMod, normalize_address, normalize_name, validate,
+};
 use hilen::{
     OnceEvent,
     refs::{Weak, weak_from_ref},
@@ -41,18 +44,21 @@ pub struct ServerModal {
     editing: Option<String>,
     game: String,
     rows: Vec<PickRow>,
+    /// Signed in as the join admin, see `JOIN_ADMIN`.
+    admin: bool,
 
     #[init]
     title: Label,
     hint: Label,
     name: TextField,
+    address: TextField,
     note: Label,
     table: TableView,
     cancel: Button,
     save: Button,
 }
 
-impl ModalView<Option<Server>, bool> for ServerModal {
+impl ModalView<(Option<Server>, bool), bool> for ServerModal {
     fn modal_event(&self) -> &OnceEvent<bool> {
         &self.event
     }
@@ -65,7 +71,12 @@ impl ModalView<Option<Server>, bool> for ServerModal {
         colors::SCRIM.into()
     }
 
-    fn setup_input(mut self: Weak<Self>, server: Option<Server>) {
+    fn setup_input(mut self: Weak<Self>, (server, admin): (Option<Server>, bool)) {
+        self.admin = admin;
+        self.address.set_hidden(!admin);
+        if let Some(address) = server.as_ref().and_then(|server| server.address.as_ref()) {
+            self.address.set_text(address);
+        }
         if let Some(server) = &server {
             self.title.set_text(format!("Edit {}", server.name));
             // The name stays, pins of players name the server. The title shows it.
@@ -88,7 +99,7 @@ impl Setup for ServerModal {
         style::dim(self.hint);
         self.hint.set_multiline(true);
         self.hint.set_text(
-            "Switch on the mods a player must have to join. The versions are the ones in your profile. The address and the password stay out of blackforge, players join through the game.",
+            "Switch on the mods a player must have to join. The versions are the ones in your profile. The password stays out of blackforge, the game asks for it.",
         );
         self.hint.place().t(PAD + 30.0).l(PAD).r(PAD).h(34);
 
@@ -112,6 +123,15 @@ impl Setup for ServerModal {
             .l(PAD)
             .r(PAD)
             .b(PAD + 48.0);
+
+        style::field(self.address, "Join address, like 86.100.76.6:2456");
+        self.address.set_hidden(true);
+        self.address
+            .place()
+            .l(PAD)
+            .r(PAD + 200.0)
+            .b(PAD)
+            .h(style::FIELD_H);
 
         style::ghost(self.cancel, "Cancel");
         self.cancel
@@ -210,6 +230,16 @@ impl ServerModal {
             Ok(name) => name,
             Err(error) => return toast::error(error.to_string()),
         };
+        // Only the admin sends the field. Without it the backend keeps what is
+        // stored, an empty text removes it.
+        let address = if self.admin {
+            match normalize_address(self.address.text()) {
+                Ok(address) => Some(address.unwrap_or_default()),
+                Err(error) => return toast::error(error.to_string()),
+            }
+        } else {
+            None
+        };
         let save = SaveServer {
             name,
             game: self.game.clone(),
@@ -222,6 +252,7 @@ impl ServerModal {
                     version: row.version.clone(),
                 })
                 .collect(),
+            address,
         };
         if let Err(error) = validate(&save) {
             return toast::error(error.to_string());

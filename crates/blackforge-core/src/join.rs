@@ -1,24 +1,50 @@
-//! Adds a "Join Durka" button to the main menu of the game.
+//! Adds a join button per server to the main menu of the game.
 //!
-//! A small loader plugin, the source is in `assets/join`. The button queues a
-//! join by the server address, and the game asks for the password itself.
+//! A small loader plugin, the source is in `assets/join`. The servers are the
+//! registered ones with a join address, written to `servers.json` next to the
+//! plugin before every start. A button finds the lobby of its server by the
+//! address and the name, and the game asks for the password itself.
 //!
 //! The plugin belongs to no mod, so the lock never lists it and `sync` leaves
 //! it alone. It has its own folder, since the achievements plugin removes its
 //! folder when that setting is off.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
-use tokio::fs;
+use blackforge_api::servers::{JOIN_ADMIN, Server};
+use serde::Serialize;
+use tokio::{fs, time::timeout};
 
 use crate::{
     error::{IoContext, Result},
     game::{GameDef, Target, VALHEIM},
+    http::Client,
+    servers::fetch,
 };
 
 const PLUGIN: &[u8] = include_bytes!("../../../assets/join/BlackforgeJoin.dll");
 const PLUGIN_DIR: [&str; 3] = ["BepInEx", "plugins", "blackforge-join"];
 const PLUGIN_FILE: &str = "BlackforgeJoin.dll";
+const LIST_FILE: &str = "servers.json";
+/// The list is fetched on the way to the game, a slow server must not hold
+/// the start up for long.
+const FETCH_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The shape of `servers.json`. Unity's `JsonUtility` in the plugin reads only
+/// an object at the top, so the list sits in a field.
+#[derive(Debug, Serialize)]
+struct JoinList<'a> {
+    servers: Vec<JoinServer<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+struct JoinServer<'a> {
+    name: &'a str,
+    address: &'a str,
+}
 
 /// Only the Valheim client has a main menu, and the plugin patches Valheim
 /// code.
@@ -27,10 +53,51 @@ pub fn applies_to(game: &GameDef) -> bool {
 }
 
 pub fn plugin_path(profile_dir: &Path) -> PathBuf {
+    plugin_dir(profile_dir).join(PLUGIN_FILE)
+}
+
+pub fn list_path(profile_dir: &Path) -> PathBuf {
+    plugin_dir(profile_dir).join(LIST_FILE)
+}
+
+fn plugin_dir(profile_dir: &Path) -> PathBuf {
     PLUGIN_DIR
         .iter()
         .fold(profile_dir.to_path_buf(), |path, part| path.join(part))
-        .join(PLUGIN_FILE)
+}
+
+/// The servers that get a button. The backend lets only the join admin set an
+/// address, the owner check here keeps a stray row out of every menu anyway.
+fn join_list(servers: &[Server]) -> Result<String> {
+    let servers = servers
+        .iter()
+        .filter(|server| server.game == VALHEIM && server.owner == JOIN_ADMIN)
+        .filter_map(|server| {
+            server.address.as_deref().map(|address| JoinServer {
+                name: &server.name,
+                address,
+            })
+        })
+        .collect();
+    Ok(serde_json::to_string_pretty(&JoinList { servers })?)
+}
+
+pub async fn write_list(profile_dir: &Path, servers: &[Server]) -> Result<()> {
+    let path = list_path(profile_dir);
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).await.at(dir)?;
+    }
+    fs::write(&path, join_list(servers)?).await.at(&path)
+}
+
+/// Fetches the servers and writes the list. A failed or slow fetch keeps the
+/// list of the last start, the game starts either way.
+pub async fn refresh_list(profile_dir: &Path) -> Result<()> {
+    let fetched = timeout(FETCH_TIMEOUT, async { fetch(&Client::new()?).await }).await;
+    match fetched {
+        Ok(Ok(servers)) => write_list(profile_dir, &servers).await,
+        _ => Ok(()),
+    }
 }
 
 pub async fn apply(profile_dir: &Path) -> Result<()> {
@@ -47,6 +114,45 @@ mod tests {
 
     use super::*;
     use crate::testing::valheim;
+
+    fn server(name: &str, owner: &str, address: Option<&str>) -> Server {
+        Server {
+            id: name.to_owned(),
+            name: name.to_owned(),
+            game: VALHEIM.to_owned(),
+            owner: owner.to_owned(),
+            mods: Vec::new(),
+            updated: 0,
+            address: address.map(str::to_owned),
+        }
+    }
+
+    #[tokio::test]
+    async fn the_list_holds_only_admin_servers_with_an_address() -> Result<()> {
+        let temp = tempdir().at(Path::new("tempdir"))?;
+        let mut other_game = server("Valley", JOIN_ADMIN, Some("86.100.76.6:2456"));
+        other_game.game = "stardew".to_owned();
+        let servers = [
+            server("Arkham Asylum", JOIN_ADMIN, Some("86.100.76.6:2456")),
+            server("Durka", JOIN_ADMIN, Some("86.100.76.6:2456")),
+            server("Mods only", JOIN_ADMIN, None),
+            server("Lookalike", "stranger", Some("1.2.3.4:2456")),
+            other_game,
+        ];
+
+        write_list(temp.path(), &servers).await?;
+        let path = list_path(temp.path());
+        let written: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).await.at(&path)?)?;
+        assert_eq!(
+            written,
+            serde_json::json!({ "servers": [
+                { "name": "Arkham Asylum", "address": "86.100.76.6:2456" },
+                { "name": "Durka", "address": "86.100.76.6:2456" },
+            ]})
+        );
+        Ok(())
+    }
 
     #[tokio::test]
     async fn writes_the_plugin() -> Result<()> {

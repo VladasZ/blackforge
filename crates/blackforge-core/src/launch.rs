@@ -268,7 +268,8 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
 }
 
 /// Puts the files of a start in place. The achievements plugin goes into the
-/// profile or comes out of it, the join button plugin goes in. The Windows
+/// profile or comes out of it, the join button plugin and its server list go
+/// in. The Windows
 /// proxy files are copied into the game folder, the config goes in switched
 /// off, so a plain start from Steam still gives the game without mods, and
 /// `run` switches it on through the command line.
@@ -276,6 +277,7 @@ pub async fn prepare(plan: &LaunchPlan, profile_dir: &Path) -> Result<()> {
     achievements::apply(profile_dir, plan.keep_achievements).await?;
     if plan.join_button {
         join::apply(profile_dir).await?;
+        join::refresh_list(profile_dir).await?;
     }
     for name in &plan.game_files {
         let source = profile_dir.join(name);

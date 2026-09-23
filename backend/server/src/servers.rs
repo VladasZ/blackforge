@@ -1,8 +1,10 @@
 //! Registered game servers. Anybody reads the whole list, no login needed,
 //! only the owner changes a row. A change of a server that is not mine gets the
-//! same 404 as one that does not exist.
+//! same 404 as one that does not exist. Only `JOIN_ADMIN` sets a join address.
 
-use blackforge_api::servers::{SaveServer, Server, ServerMod, normalize_name, validate};
+use blackforge_api::servers::{
+    JOIN_ADMIN, SaveServer, Server, ServerMod, normalize_address, normalize_name, validate,
+};
 use hilen_server::{
     AppError,
     auth::User,
@@ -15,7 +17,7 @@ use hilen_server::{
 use serde_json::{from_str, to_string};
 use sqlx::{PgPool, types::Uuid};
 
-use crate::routes::require_username;
+use crate::routes::{require_username, username_of};
 
 pub fn routes() -> Router<PgPool> {
     Router::new()
@@ -23,21 +25,21 @@ pub fn routes() -> Router<PgPool> {
         .route("/api/servers/{id}", put(update).delete(delete))
 }
 
-type Row = (Uuid, String, String, String, String, i64);
+type Row = (Uuid, String, String, String, String, i64, Option<String>);
 
 // The two reads spell the columns out twice, sqlx takes only a literal query.
 const LIST: &str = r"
-SELECT s.id, s.name, s.game, p.username, s.mods, EXTRACT(EPOCH FROM s.updated_at)::bigint
+SELECT s.id, s.name, s.game, p.username, s.mods, EXTRACT(EPOCH FROM s.updated_at)::bigint, s.address
 FROM servers s JOIN profiles p ON p.user_id = s.owner_id
 ORDER BY lower(s.name), s.created_at";
 
 const ONE: &str = r"
-SELECT s.id, s.name, s.game, p.username, s.mods, EXTRACT(EPOCH FROM s.updated_at)::bigint
+SELECT s.id, s.name, s.game, p.username, s.mods, EXTRACT(EPOCH FROM s.updated_at)::bigint, s.address
 FROM servers s JOIN profiles p ON p.user_id = s.owner_id
 WHERE s.id = $1";
 
 fn server_of(row: Row) -> Result<Server, AppError> {
-    let (id, name, game, owner, mods, updated) = row;
+    let (id, name, game, owner, mods, updated, address) = row;
     let mods: Vec<ServerMod> = from_str(&mods).map_err(|error| AppError::Internal(error.into()))?;
     Ok(Server {
         id: id.to_string(),
@@ -46,6 +48,7 @@ fn server_of(row: Row) -> Result<Server, AppError> {
         owner,
         mods,
         updated,
+        address,
     })
 }
 
@@ -72,7 +75,35 @@ fn server_id(id: &str) -> Result<Uuid, AppError> {
 }
 
 /// The checked body as it goes into the table.
-fn checked(body: &SaveServer) -> Result<(String, String, String), AppError> {
+struct Checked {
+    name: String,
+    game: String,
+    mods: String,
+    address: AddressChange,
+}
+
+/// What a save does to the stored join address.
+enum AddressChange {
+    /// No field, an app before the join address sent the save.
+    Keep,
+    Remove,
+    Set(String),
+}
+
+impl AddressChange {
+    fn changes(&self) -> bool {
+        !matches!(self, Self::Keep)
+    }
+
+    fn stored(&self) -> Option<&str> {
+        match self {
+            Self::Set(address) => Some(address),
+            Self::Keep | Self::Remove => None,
+        }
+    }
+}
+
+fn checked(body: &SaveServer) -> Result<Checked, AppError> {
     validate(body).map_err(|error| AppError::BadRequest(error.to_string()))?;
     let name =
         normalize_name(&body.name).map_err(|error| AppError::BadRequest(error.to_string()))?;
@@ -81,7 +112,32 @@ fn checked(body: &SaveServer) -> Result<(String, String, String), AppError> {
         return Err(AppError::BadRequest("a server needs a game".to_owned()));
     }
     let mods = to_string(&body.mods).map_err(|error| AppError::Internal(error.into()))?;
-    Ok((name, game.to_owned(), mods))
+    let address = match body.address.as_deref().map(normalize_address) {
+        None => AddressChange::Keep,
+        Some(Ok(None)) => AddressChange::Remove,
+        Some(Ok(Some(address))) => AddressChange::Set(address),
+        Some(Err(error)) => return Err(AppError::BadRequest(error.to_string())),
+    };
+    Ok(Checked {
+        name,
+        game: game.to_owned(),
+        mods,
+        address,
+    })
+}
+
+/// A join address puts a button in every player's game menu, so only the
+/// join admin sets one.
+async fn allow_address(db: &PgPool, user: &User, body: &Checked) -> Result<(), AppError> {
+    if body.address.stored().is_none() {
+        return Ok(());
+    }
+    if username_of(db, user.id).await?.as_deref() == Some(JOIN_ADMIN) {
+        return Ok(());
+    }
+    Err(AppError::BadRequest(
+        "only the join admin gives a server a join address".to_owned(),
+    ))
 }
 
 /// A name belongs to one server of a game, a pin names its server.
@@ -100,17 +156,20 @@ async fn create(
     Json(body): Json<SaveServer>,
 ) -> Result<Json<Server>, AppError> {
     require_username(&db, &user).await?;
-    let (name, game, mods) = checked(&body)?;
+    let body = checked(&body)?;
+    allow_address(&db, &user, &body).await?;
     let (id,): (Uuid,) = sqlx::query_as(
-        "INSERT INTO servers (owner_id, game, name, mods) VALUES ($1, $2, $3, $4) RETURNING id",
+        r"INSERT INTO servers (owner_id, game, name, mods, address) VALUES ($1, $2, $3, $4, $5)
+RETURNING id",
     )
     .bind(user.id)
-    .bind(&game)
-    .bind(&name)
-    .bind(&mods)
+    .bind(&body.game)
+    .bind(&body.name)
+    .bind(&body.mods)
+    .bind(body.address.stored())
     .fetch_one(&db)
     .await
-    .map_err(|error| taken(error, &name))?;
+    .map_err(|error| taken(error, &body.name))?;
     Ok(Json(one(&db, id).await?))
 }
 
@@ -121,7 +180,8 @@ async fn update(
     Json(body): Json<SaveServer>,
 ) -> Result<Json<Server>, AppError> {
     let id = server_id(&id)?;
-    let (name, game, mods) = checked(&body)?;
+    let body = checked(&body)?;
+    allow_address(&db, &user, &body).await?;
     let current: Option<(String,)> =
         sqlx::query_as("SELECT name FROM servers WHERE id = $1 AND owner_id = $2")
             .bind(id)
@@ -132,19 +192,22 @@ async fn update(
         return Err(AppError::NotFound);
     };
     // Players' pins name the server, a new name would leave them behind.
-    if current != name {
+    if current != body.name {
         return Err(AppError::BadRequest(
             "a server keeps the name it was registered with".to_owned(),
         ));
     }
     sqlx::query(
-        r"UPDATE servers SET game = $3, mods = $4, updated_at = now()
+        r"UPDATE servers SET game = $3, mods = $4, updated_at = now(),
+address = CASE WHEN $5 THEN $6 ELSE address END
 WHERE id = $1 AND owner_id = $2",
     )
     .bind(id)
     .bind(user.id)
-    .bind(&game)
-    .bind(&mods)
+    .bind(&body.game)
+    .bind(&body.mods)
+    .bind(body.address.changes())
+    .bind(body.address.stored())
     .execute(&db)
     .await?;
     Ok(Json(one(&db, id).await?))

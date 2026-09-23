@@ -37,7 +37,7 @@ pub fn routes() -> Router<PgPool> {
         .route("/api/status", post(set_status))
 }
 
-async fn username_of(db: &PgPool, user_id: Uuid) -> Result<Option<String>, sqlx::Error> {
+pub(crate) async fn username_of(db: &PgPool, user_id: Uuid) -> Result<Option<String>, sqlx::Error> {
     let row: Option<(String,)> = sqlx::query_as("SELECT username FROM profiles WHERE user_id = $1")
         .bind(user_id)
         .fetch_optional(db)

@@ -3,7 +3,7 @@
 //! edits or removes their own servers. The address and the password of a
 //! server are no part of this, players join through the game as before.
 
-use blackforge_api::servers::{Server, ServerMod};
+use blackforge_api::servers::{JOIN_ADMIN, Server, ServerMod};
 use blackforge_core::servers::{Needs, ServerInstall, fetch, needs};
 use hilen::{
     refs::{Weak, weak_from_ref},
@@ -47,6 +47,8 @@ struct ServerRow {
 #[view]
 pub struct ServersPage {
     rows: Vec<ServerRow>,
+    /// Signed in as `JOIN_ADMIN`, so the form offers the join address.
+    admin: bool,
 
     #[init]
     title: Label,
@@ -124,14 +126,14 @@ impl ServersPage {
                         server,
                     })
                     .collect();
-                Ok(rows)
+                Ok((rows, me.as_deref() == Some(JOIN_ADMIN)))
             },
             move |result| {
                 if !self.is_ok() {
                     return;
                 }
                 match result {
-                    Ok(rows) => self.set_rows(rows),
+                    Ok((rows, admin)) => self.set_rows(rows, admin),
                     Err(error) => {
                         self.note.set_text("The servers did not load");
                         toast::failure(&error);
@@ -141,7 +143,8 @@ impl ServersPage {
         );
     }
 
-    fn set_rows(mut self: Weak<Self>, rows: Vec<ServerRow>) {
+    fn set_rows(mut self: Weak<Self>, rows: Vec<ServerRow>, admin: bool) {
+        self.admin = admin;
         self.note
             .set_text("No server is registered yet. Register yours with the button above.");
         self.note.set_hidden(!rows.is_empty());
@@ -153,7 +156,7 @@ impl ServersPage {
         if !social::signed_in() {
             return toast::info("sign in on the Friends page to register a server");
         }
-        ServerModal::show_modally_with_input(None, move |saved| {
+        ServerModal::show_modally_with_input((None, self.admin), move |saved| {
             if saved && self.is_ok() {
                 self.refresh();
             }
@@ -164,11 +167,14 @@ impl ServersPage {
         let Some(row) = self.rows.get(index) else {
             return;
         };
-        ServerModal::show_modally_with_input(Some(row.server.clone()), move |saved| {
-            if saved && self.is_ok() {
-                self.refresh();
-            }
-        });
+        ServerModal::show_modally_with_input(
+            (Some(row.server.clone()), self.admin),
+            move |saved| {
+                if saved && self.is_ok() {
+                    self.refresh();
+                }
+            },
+        );
     }
 
     fn install(self: Weak<Self>, index: usize, button: Weak<Button>) {

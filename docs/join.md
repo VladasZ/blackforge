@@ -1,19 +1,20 @@
-# Join button
+# Join buttons
 
-The Valheim main menu gets a big "Join Durka" button in the top left corner. A
-click takes the player to character select. After Start the game joins the Durka
-server and asks for the server password. The player types the password, the mod
-never knows it.
+The Valheim main menu gets a big join button per server in the top left corner,
+like "Join Durka" and "Join Arkham Asylum". A click takes the player to character
+select. After Start the game joins that server and asks for the server password.
+The player types the password, the mod never knows it.
 
 ## The parts
 
 - `assets/join/Plugin.cs` is a small `BepInEx` plugin. A Harmony postfix on
   `FejdStartup.SetupGui` copies the framed Start button of character select into
-  the main menu, anchors it to the top left and gives it the label. Its gamepad
-  shortcut is removed, so the A button in the menu does not trigger a join.
+  the main menu once per server, stacks the copies in the top left and gives
+  each its label. Their gamepad shortcut is removed, so the A button in the menu
+  does not trigger a join.
 - `assets/join/BlackforgeJoin.dll` is the built plugin. It is committed, the app
   embeds it.
-- `crates/blackforge-core/src/join.rs` writes the dll to
+- `crates/blackforge-core/src/join.rs` writes the dll and `servers.json` to
   `BepInEx/plugins/blackforge-join` before every start of the Valheim client.
   There is no setting, every Valheim client started from the app gets it. A
   server gets nothing.
@@ -21,24 +22,49 @@ never knows it.
 The folder is not `BepInEx/plugins/blackforge` on purpose. That one belongs to
 the achievements plugin, and it is removed when that setting is off.
 
+## The server list
+
+The buttons come from the registered servers, see `servers.md`. A server with a
+join address gets a button. Only the account `JOIN_ADMIN` in
+`crates/blackforge-api/src/servers.rs` may set an address, since every player
+gets the button. The app fetches the list before every start, waits at most 5
+seconds, and writes it as `servers.json`:
+
+```json
+{ "servers": [{ "name": "Durka", "address": "86.100.76.6:2456" }] }
+```
+
+The list sits in a field because Unity's `JsonUtility` reads only an object at
+the top. A failed fetch keeps the file of the last start. No file, or no server
+in it, means no button.
+
+So a new server needs no release. Register it on the Servers page and give it
+the address in the form, the next start of the game shows its button.
+
 ## How the join works
 
-The click calls `ZSteamMatchmaking.instance.QueueServerJoin("86.100.76.6:2456")`.
-That is the same queue a Steam invite or the `+connect` launch argument fills.
-The game picks the queue up on its own, shows the EULA if needed, then character
-select. After Start, `FejdStartup.JoinServer` looks for a PlayFab lobby with that
-address and joins through the PlayFab relay.
+Every server runs with crossplay on. At every start it registers a PlayFab lobby
+that stores its public address as `ip:port` and its `SERVER_NAME`. With
+crossplay the players go through the PlayFab relay, so no port on pc1 is open
+and the port in the address is only a label. All servers use the same address,
+`86.100.76.6:2456`.
 
-This works because the server runs with crossplay on. At every start it
-registers a PlayFab lobby with its public address, `86.100.76.6:2456`. The ports
-on pc1 stay closed, the relay needs none. The join code of the lobby changes at
-every server restart, so the button does not use it.
+A click searches the lobbies by the address, the server name, and the active
+flag, the keys are `ServerIpSearchKey`, `ServerNameSearchKey` and
+`IsActiveSearchKey` of `ZPlayFabMatchmaking`. The stock join by address alone
+cannot be used, with several lobbies on one address it joins the newest one.
+The found lobby names its host player. The plugin puts a join to that host into
+`ZSteamMatchmaking.m_joinData`, the same queue a Steam invite fills. The game
+picks the queue up on its own, shows the EULA if needed, then character select,
+and joins through the relay after Start.
 
-The address is fixed in the plugin. The home IP does not change. If it ever does,
-change `Address` in `Plugin.cs`, rebuild the dll and ship a release.
+If the player is not logged in to PlayFab yet, the game's own popup waits for
+the login and then runs the join. If no lobby is found, the menu shows
+"<name> is not online".
 
-If the player is not logged in to PlayFab when the join starts, the game tries a
-direct Steam connection instead. That fails, since the ports are closed.
+The name in the list must match `SERVER_NAME` of the server exactly. A rename on
+the server side without the same name on the Servers page leaves a button that
+says the server is not online.
 
 ## Building the dll
 
@@ -60,6 +86,6 @@ Build the app again after a new dll, the Rust side embeds it at compile time.
 
 ## Tests
 
-`cargo test -p blackforge-core join` checks that the dll is written and that
-only the Valheim client gets it. The button itself was checked by hand in the
-running game.
+`cargo test -p blackforge-core join` checks that the dll is written, that only
+the Valheim client gets it, and which servers land in `servers.json`. The
+buttons themselves are checked by hand in the running game.
