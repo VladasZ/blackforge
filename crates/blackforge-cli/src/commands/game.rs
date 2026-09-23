@@ -25,7 +25,11 @@ pub async fn run(context: &Context, game_dir: Option<PathBuf>, game_args: &[Stri
         profile_dir: profile.dir(),
         doorstop_major: doorstop_major(profile.dir()).await,
         game_args,
-        keep_achievements: context.forge.keep_achievements().await?,
+        keep_achievements: context
+            .forge
+            .launch_settings(&profile)
+            .await?
+            .keep_achievements,
         inherited: &inherited_env,
     })?;
     println!(
@@ -42,13 +46,21 @@ pub async fn run(context: &Context, game_dir: Option<PathBuf>, game_args: &[Stri
 }
 
 pub async fn achievements(context: &Context, state: Option<OnOff>) -> Result<()> {
+    let profile = context.profile().await?;
     if let Some(state) = state {
         context
             .forge
-            .set_keep_achievements(state == OnOff::On)
+            .edit_launch_settings(&profile, |settings| {
+                settings.keep_achievements = state == OnOff::On;
+            })
             .await?;
     }
-    if context.forge.keep_achievements().await? {
+    if context
+        .forge
+        .launch_settings(&profile)
+        .await?
+        .keep_achievements
+    {
         println!("on, mods do not block achievements, real cheats still do");
     } else {
         println!("off, a game with mods earns no achievements");

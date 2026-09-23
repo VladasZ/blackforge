@@ -19,6 +19,7 @@ use crate::{
     achievements,
     error::{Error, IoContext, Result},
     game::{GameDef, GameInstall, Target},
+    steam,
     util::exists,
 };
 
@@ -64,6 +65,8 @@ pub struct LaunchPlan {
     pub game_files: Vec<String>,
     /// Whether the achievements plugin goes into the profile first.
     pub keep_achievements: bool,
+    /// The Steam app has to run before the start, see `steam`.
+    pub needs_steam: bool,
 }
 
 pub fn preloader_path(profile_dir: &Path) -> PathBuf {
@@ -167,6 +170,8 @@ fn windows_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
             DOORSTOP_VERSION.to_owned(),
         ],
         keep_achievements: keeps_achievements(input),
+        // Steam opens itself, the start goes through it.
+        needs_steam: false,
     }
 }
 
@@ -243,6 +248,7 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
             cwd,
             game_files: Vec::new(),
             keep_achievements: keeps_achievements(input),
+            needs_steam: steam::needed(input.os, input.game.target),
         };
     }
     LaunchPlan {
@@ -252,6 +258,7 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
         cwd,
         game_files: Vec::new(),
         keep_achievements: keeps_achievements(input),
+        needs_steam: steam::needed(input.os, input.game.target),
     }
 }
 
@@ -294,6 +301,10 @@ fn disable_doorstop(config: &str) -> String {
 pub async fn spawn(plan: &LaunchPlan, profile_dir: &Path) -> Result<Child> {
     if !exists(&preloader_path(profile_dir)).await {
         return Err(Error::LoaderMissing);
+    }
+    // A failed process lookup blocks nothing, the start goes on as before.
+    if plan.needs_steam && matches!(steam::running().await, Ok(false)) {
+        return Err(Error::SteamNotRunning);
     }
     prepare(plan, profile_dir).await?;
     let mut command = Command::new(&plan.program);
@@ -382,6 +393,7 @@ mod tests {
         assert!(plan.env.is_empty());
         assert!(plan.game_files.is_empty());
         assert!(plan.keep_achievements);
+        assert!(plan.needs_steam);
         Ok(())
     }
 

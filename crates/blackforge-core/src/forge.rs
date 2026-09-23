@@ -15,7 +15,7 @@ use crate::{
     lock::{LockedPackage, Lockfile},
     manifest::{Manifest, ModSpec, Pin, VersionReq},
     paths::DataDir,
-    profile::{Profile, ProfileStore, game_dir_key},
+    profile::{LaunchSettings, Profile, ProfileStore, game_dir_key},
     progress::Progress,
     resolve::{MissingDependency, Unlock, resolve},
     thunderstore::{FRESH_ENOUGH, PackageIndex},
@@ -338,15 +338,27 @@ impl Forge {
         Broken::resolve(&list, &game.label, updated)
     }
 
-    /// Whether a modded game may earn achievements, off until the user asks.
-    pub async fn keep_achievements(&self) -> Result<bool> {
-        Ok(self.store.state().await?.keep_achievements)
+    /// How `profile` starts the game. A profile from before the launch file
+    /// takes the achievements flag the machine had then.
+    pub async fn launch_settings(&self, profile: &Profile) -> Result<LaunchSettings> {
+        if let Some(settings) = profile.launch_settings().await? {
+            return Ok(settings);
+        }
+        Ok(LaunchSettings {
+            keep_achievements: self.store.state().await?.keep_achievements,
+            ..LaunchSettings::default()
+        })
     }
 
-    pub async fn set_keep_achievements(&self, keep: bool) -> Result<()> {
-        let mut state = self.store.state().await?;
-        state.keep_achievements = keep;
-        self.store.save_state(&state).await
+    /// Changes the settings of `profile` with `edit` and saves them.
+    pub async fn edit_launch_settings(
+        &self,
+        profile: &Profile,
+        edit: impl FnOnce(&mut LaunchSettings),
+    ) -> Result<()> {
+        let mut settings = self.launch_settings(profile).await?;
+        edit(&mut settings);
+        profile.save_launch_settings(&settings).await
     }
 
     async fn relock(

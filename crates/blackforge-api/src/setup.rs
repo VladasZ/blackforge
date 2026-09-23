@@ -13,6 +13,32 @@ pub type Settings = BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>
 pub struct Setup {
     pub mods: BTreeMap<String, Mod>,
     pub configs: Settings,
+    /// Left out by apps before 0.1.16, and so empty in their revisions.
+    #[serde(default, skip_serializing_if = "Launch::is_empty")]
+    pub launch: Launch,
+}
+
+/// How the game starts. `None` is a value no machine has set yet.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Launch {
+    /// Extra arguments for the game, split on spaces.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game_args: Option<String>,
+    /// The achievements plugin goes in, so mods do not block them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keep_achievements: Option<bool>,
+}
+
+impl Launch {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// How many of the values differ from `other`.
+    fn changed(&self, other: &Self) -> usize {
+        usize::from(self.game_args != other.game_args)
+            + usize::from(self.keep_achievements != other.keep_achievements)
+    }
 }
 
 /// Every pin written before pins named their server was made for Durka.
@@ -156,7 +182,8 @@ impl Summary {
             settings_changed: keys
                 .into_iter()
                 .filter(|key| old.get(*key) != new.get(*key))
-                .count(),
+                .count()
+                + before.launch.changed(&after.launch),
         }
     }
 
@@ -230,13 +257,15 @@ mod tests {
                     BTreeMap::from([("count".to_owned(), count.to_owned())]),
                 )]),
             )]),
+            ..Setup::default()
         }
     }
 
     #[test]
     fn a_summary_counts_every_kind_of_change() {
         let before = setup(&[("A-Kept", "1.0.0"), ("A-Gone", "1.0.0")], "1");
-        let after = setup(&[("A-Kept", "2.0.0"), ("A-New", "1.0.0")], "2");
+        let mut after = setup(&[("A-Kept", "2.0.0"), ("A-New", "1.0.0")], "2");
+        after.launch.keep_achievements = Some(true);
         let summary = Summary::between(&before, &after);
         assert_eq!(
             summary,
@@ -244,12 +273,12 @@ mod tests {
                 mods_added: 1,
                 mods_removed: 1,
                 mods_changed: 1,
-                settings_changed: 1,
+                settings_changed: 2,
             }
         );
         assert_eq!(
             summary.to_string(),
-            "1 mod added, 1 mod removed, 1 mod changed, 1 setting changed"
+            "1 mod added, 1 mod removed, 1 mod changed, 2 settings changed"
         );
         assert!(Summary::between(&after, &after).is_empty());
         assert_eq!(Summary::default().to_string(), "no changes");
@@ -274,5 +303,15 @@ mod tests {
         )
         .unwrap();
         assert_eq!(newest.server, None);
+    }
+
+    #[test]
+    fn a_setup_of_an_older_app_has_no_launch_settings() {
+        let old: Setup = serde_json::from_str(r#"{"mods":{},"configs":{}}"#).unwrap();
+        assert!(old.launch.is_empty());
+        assert_eq!(
+            serde_json::to_string(&old).unwrap(),
+            r#"{"mods":{},"configs":{}}"#
+        );
     }
 }

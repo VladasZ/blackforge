@@ -4,8 +4,9 @@ Everything lives in `~/.config/blackforge`, or in `BLACKFORGE_HOME` when set.
 
 ## config.toml
 
-The machine config. It holds the active profile name, the `keep_achievements`
-flag, and a `[game_dirs]` table. The table is only for game folders the user
+The machine config. It holds the active profile name and a `[game_dirs]` table.
+An older `keep_achievements` flag here is only read for a profile without a
+`launch.toml`. The table is only for game folders the user
 gave by hand, like a server installed with `SteamCMD`. An empty table is
 normal. The game is found through `Steam` by itself, see `game/locate.rs`.
 
@@ -17,6 +18,8 @@ version, written `"*"`, or is pinned for a server, written
 only a server install makes one. An older file has pins with no server, they
 are all Durka pins and read as such.
 `blackforge.lock` is the exact version of every package, dependencies included.
+`launch.toml` is how the game of the profile starts, the extra game arguments and
+the achievements switch. Cloud sync carries it, see `sync.md`.
 `installed.json` is what is unpacked in the profile and which files belong to
 which package. When all 3 agree, the profile is complete. A package that
 left the lock loses its config and whatever else it wrote into the profile

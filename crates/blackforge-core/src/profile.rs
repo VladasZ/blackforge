@@ -15,6 +15,21 @@ use crate::{
     util::exists,
 };
 
+/// The launch settings of a profile, see `LaunchSettings`.
+pub const LAUNCH_FILE: &str = "launch.toml";
+
+/// How the game of a profile starts. A file of its own in the profile folder,
+/// so cloud sync carries it along with the mods.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LaunchSettings {
+    /// Extra arguments for the game, split on spaces.
+    #[serde(default)]
+    pub game_args: String,
+    /// Lets a modded game earn achievements, see `achievements`.
+    #[serde(default)]
+    pub keep_achievements: bool,
+}
+
 /// One named mod set. The folder holds the manifest, the lock, and the tree
 /// that `sync` builds: the mod loader files and the `BepInEx` folder.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,6 +61,25 @@ impl Profile {
         self.dir.join(LOCK_FILE)
     }
 
+    pub fn launch_path(&self) -> PathBuf {
+        self.dir.join(LAUNCH_FILE)
+    }
+
+    /// `None` while the profile has no launch file, see `Forge::launch_settings`.
+    pub async fn launch_settings(&self) -> Result<Option<LaunchSettings>> {
+        let path = self.launch_path();
+        if !exists(&path).await {
+            return Ok(None);
+        }
+        let text = fs::read_to_string(&path).await.at(&path)?;
+        Ok(Some(toml::from_str(&text)?))
+    }
+
+    pub async fn save_launch_settings(&self, settings: &LaunchSettings) -> Result<()> {
+        let path = self.launch_path();
+        fs::write(&path, toml::to_string(settings)?).await.at(&path)
+    }
+
     pub async fn manifest(&self) -> Result<Manifest> {
         Manifest::read(&self.manifest_path()).await
     }
@@ -66,7 +100,8 @@ impl Profile {
 pub struct State {
     #[serde(default)]
     pub active_profile: Option<String>,
-    /// Lets a modded game earn achievements, see `achievements`.
+    /// Where the achievements flag lived before each profile got its own, see
+    /// `LaunchSettings`. Only read for a profile without a launch file.
     #[serde(default)]
     pub keep_achievements: bool,
     /// Game folders the user gave by hand, keyed by `game_dir_key`.

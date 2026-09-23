@@ -95,6 +95,7 @@ pub fn hint(fix: Fix) -> &'static str {
         Fix::PickProfile => "pick one with 'blackforge profile switch <name>'",
         Fix::GiveGameFolder => "pass the folder once with 'blackforge run --game-dir <path>'",
         Fix::Sync => "run 'blackforge sync'",
+        Fix::StartSteam => "open Steam, then run again",
     }
 }
 

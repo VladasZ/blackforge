@@ -11,9 +11,12 @@ when it next checks.
 The private snapshot includes chosen mods, exact locked versions and dependencies,
 the server a pin is for, enabled states, and portable values from every `.cfg` file under `BepInEx/config`.
 It includes default values and settings without default comments, so it can restore
-a fresh installation. It does not upload game saves, mod archives, login tokens,
-game folders or launch arguments. Secret-looking values and absolute local paths
-are excluded. This uses separate routes and a separate table from friend sharing.
+a fresh installation. It also carries the launch settings of the profile, the extra
+game arguments and the achievements switch from `launch.toml`. They merge like config
+settings. A setup saved by an app before 0.1.16 has none, and a machine keeps its
+own until it changes one. It does not upload game saves, mod archives, login tokens
+or game folders. Secret-looking values and absolute local paths are excluded, game
+arguments with a path of this machine stay local too. This uses separate routes and a separate table from friend sharing.
 
 A setup from an older app has pins without a server. Reading it, in the app
 and in the backend, gives them `LEGACY_PIN_SERVER`, Durka, and migration `0006`

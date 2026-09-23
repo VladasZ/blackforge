@@ -13,4 +13,6 @@ pub enum Fix {
     GiveGameFolder,
     /// The profile folder does not hold what the lock asks for.
     Sync,
+    /// The game client on a Mac needs the Steam app running.
+    StartSteam,
 }

@@ -27,6 +27,7 @@ pub mod r2;
 pub mod resolve;
 pub mod servers;
 pub mod social;
+pub mod steam;
 #[cfg(test)]
 mod testing;
 pub mod thunderstore;

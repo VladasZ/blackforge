@@ -57,6 +57,8 @@ pub enum Error {
     IndexMissing,
     #[error("the mod loader is not installed, the mods are not synced yet")]
     LoaderMissing,
+    #[error("Steam is not running")]
+    SteamNotRunning,
     #[error("the progress receiver was dropped, the operation was cancelled")]
     Cancelled,
     #[error("not signed in, or the session ended. Sign in again")]
@@ -101,6 +103,7 @@ impl Error {
             Self::NoActiveProfile => Some(Fix::PickProfile),
             Self::GameNotInstalled(_) => Some(Fix::GiveGameFolder),
             Self::LoaderMissing => Some(Fix::Sync),
+            Self::SteamNotRunning => Some(Fix::StartSteam),
             _ => None,
         }
     }

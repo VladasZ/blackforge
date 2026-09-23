@@ -10,6 +10,7 @@ pub fn hint(fix: Fix) -> Option<&'static str> {
         Fix::CreateProfile | Fix::PickProfile => None,
         Fix::GiveGameFolder => Some("press Run game to pick the folder by hand"),
         Fix::Sync => Some("press Run game, it installs the missing files first"),
+        Fix::StartSteam => Some("open Steam first"),
     }
 }
 

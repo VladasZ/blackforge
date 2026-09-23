@@ -7,9 +7,10 @@ use std::path::{Path, PathBuf};
 use blackforge_core::{
     doctor::{Check, Status},
     fix::Fix,
+    steam,
 };
 use hilen::{
-    dispatch::{on_main, spawn},
+    dispatch::{after, on_main, spawn},
     filesystem::Paths,
     refs::{Weak, weak_from_ref},
     system::open_url,
@@ -38,6 +39,8 @@ const DETAIL_T: f32 = 32.0;
 const DETAIL_L: f32 = 28.0;
 const ROW_PAD_B: f32 = 12.0;
 const MIN_ROW: f32 = 58.0;
+/// Seconds Steam takes to start before the checks run again.
+const STEAM_START: f32 = 8.0;
 const FIX_W: f32 = 150.0;
 /// The detail ends left of the fix button and the folder button.
 const DETAIL_R: f32 = 16.0 + icon_button::SIZE + 12.0 + FIX_W + 12.0;
@@ -70,6 +73,7 @@ fn fix_label(fix: Fix) -> Option<&'static str> {
     match fix {
         Fix::GiveGameFolder => Some("Pick game folder"),
         Fix::Sync => Some("Install missing files"),
+        Fix::StartSteam => Some("Open Steam"),
         Fix::CreateProfile | Fix::PickProfile => None,
     }
 }
@@ -182,8 +186,28 @@ impl DoctorPage {
         match fix {
             Fix::GiveGameFolder => self.pick_game_folder(button),
             Fix::Sync => self.install_missing(button),
+            Fix::StartSteam => self.open_steam(),
             Fix::CreateProfile | Fix::PickProfile => {}
         }
+    }
+
+    /// Steam needs a few seconds to start, the checks run again after them.
+    fn open_steam(self: Weak<Self>) {
+        backend::load(
+            "opening Steam",
+            |_, _| async move { Ok(steam::open().await?) },
+            move |result| match result {
+                Ok(()) => {
+                    toast::info("Steam is starting");
+                    after(STEAM_START, move || {
+                        if self.is_ok() {
+                            self.check();
+                        }
+                    });
+                }
+                Err(error) => toast::failure(&error),
+            },
+        );
     }
 
     fn install_missing(self: Weak<Self>, button: Weak<Button>) {

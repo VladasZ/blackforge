@@ -4,16 +4,19 @@ use std::{
     path::PathBuf,
     sync::{
         LazyLock,
-        atomic::{AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
 };
 
 use blackforge_core::{
     Error,
+    game::Target,
     launch::{LaunchInput, Os, doorstop_major, inherited_env, plan, spawn as spawn_game},
+    progress::Progress,
+    steam,
 };
 use hilen::{
-    dispatch::{on_main, spawn},
+    dispatch::{on_main, sleep, spawn},
     filesystem::Paths,
     store::OnDisk,
     ui::Question,
@@ -24,8 +27,11 @@ use crate::{
     backend,
     cloud::{self, Launch},
     social,
-    ui::{sidebar, toast},
+    ui::{doctor_page, sidebar, toast},
 };
+
+/// Steam is looked for this often on a Mac.
+const STEAM_SECONDS: f32 = 3.0;
 
 /// Where a start of the game is, shown on the run button.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,15 +70,97 @@ fn set_run(run: Run) {
     on_main(move || sidebar::show_run(run));
 }
 
-static GAME_ARGS: LazyLock<OnDisk<String>> = LazyLock::new(|| OnDisk::new("gui-game-args.json"));
+/// The game needs the Steam app and it does not run, see `watch_steam`.
+static STEAM_MISSING: AtomicBool = AtomicBool::new(false);
 
-/// Extra arguments for the game itself, split on spaces at launch.
-pub fn game_args() -> String {
-    GAME_ARGS.get().unwrap_or_default()
+pub fn steam_missing() -> bool {
+    STEAM_MISSING.load(Ordering::SeqCst)
 }
 
-pub fn set_game_args(args: &str) {
-    GAME_ARGS.set(args.to_owned());
+/// On a Mac the game client signs in through the Steam app, and the game is
+/// started without it. The run button waits until Steam runs, and the
+/// Doctor badge follows. Runs for the whole session.
+pub fn watch_steam() {
+    let Ok(os) = Os::current() else {
+        return;
+    };
+    if !steam::needed(os, Target::Client) {
+        return;
+    }
+    spawn(async move {
+        loop {
+            let missing = steam_missing_now(os).await;
+            if STEAM_MISSING.swap(missing, Ordering::SeqCst) != missing {
+                on_main(|| {
+                    sidebar::show_run(run());
+                    doctor_page::check_in_background();
+                });
+            }
+            sleep(STEAM_SECONDS).await;
+        }
+    });
+}
+
+async fn steam_missing_now(os: Os) -> bool {
+    let target = match profile_target().await {
+        Ok(target) => target,
+        Err(error) => {
+            log::warn!("the profile did not load for the Steam check: {error:#}");
+            return false;
+        }
+    };
+    if !steam::needed(os, target) {
+        return false;
+    }
+    match steam::running().await {
+        Ok(running) => !running,
+        Err(error) => {
+            log::warn!("the Steam check did not run: {error:#}");
+            false
+        }
+    }
+}
+
+async fn profile_target() -> anyhow::Result<Target> {
+    let forge = backend::forge()?;
+    let profile = backend::profile(forge, &Progress::silent()).await?;
+    Ok(profile.manifest().await?.target)
+}
+
+/// Where the game arguments lived before they moved into the launch file of
+/// the profile, see `move_old_game_args`.
+static OLD_GAME_ARGS: LazyLock<OnDisk<String>> =
+    LazyLock::new(|| OnDisk::new("gui-game-args.json"));
+
+/// Moves the game arguments of an app before 0.1.16 into the profile, so
+/// cloud sync carries them. Runs once, the old file goes away after.
+pub fn move_old_game_args() {
+    let Some(args) = OLD_GAME_ARGS.get() else {
+        return;
+    };
+    if args.trim().is_empty() {
+        OLD_GAME_ARGS.reset();
+        return;
+    }
+    backend::load(
+        "moving the game arguments",
+        |forge, progress| async move {
+            let profile = backend::profile(forge, &progress).await?;
+            if profile.launch_settings().await?.is_none() {
+                forge
+                    .edit_launch_settings(&profile, |settings| settings.game_args = args)
+                    .await?;
+            }
+            Ok(())
+        },
+        |result| match result {
+            Ok(()) => {
+                OLD_GAME_ARGS.reset();
+                cloud::schedule();
+            }
+            Err(error) => log::warn!("the game arguments did not move: {error:#}"),
+        },
+    );
 }
 
 enum Started {
@@ -144,7 +232,6 @@ fn start(game_dir: Option<PathBuf>) {
 /// `RUN` is set by now, every way out that starts no game sets it back to idle.
 fn launch(game_dir: Option<PathBuf>) {
     set_run(Run::Starting);
-    let game_args: Vec<String> = game_args().split_whitespace().map(str::to_owned).collect();
 
     backend::load(
         "starting the game",
@@ -163,6 +250,12 @@ fn launch(game_dir: Option<PathBuf>) {
                 Err(error) => return Err(error.into()),
             };
             let doorstop_major = doorstop_major(profile.dir()).await;
+            let settings = forge.launch_settings(&profile).await?;
+            let game_args: Vec<String> = settings
+                .game_args
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect();
             let plan = plan(&LaunchInput {
                 os: Os::current()?,
                 game: &game,
@@ -170,7 +263,7 @@ fn launch(game_dir: Option<PathBuf>) {
                 profile_dir: profile.dir(),
                 doorstop_major,
                 game_args: &game_args,
-                keep_achievements: forge.keep_achievements().await?,
+                keep_achievements: settings.keep_achievements,
                 inherited: &inherited_env,
             })?;
             let child = spawn_game(&plan, profile.dir()).await?;

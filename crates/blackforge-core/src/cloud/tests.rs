@@ -1,16 +1,20 @@
 use std::collections::BTreeMap;
 
-use blackforge_api::setup::{Mod, Setup};
+use blackforge_api::setup::{Launch, Mod, Setup};
 use tempfile::tempdir;
 use tokio::fs;
 
 use super::{
-    Baseline, Snapshot, Step, capture, merge::review, plan, portable, recover,
-    restore::write_settings, validate,
+    Baseline, Key, LaunchKey, Snapshot, Step, capture,
+    merge::review,
+    plan, portable, recover,
+    restore::{write_launch, write_settings},
+    snapshot, validate,
 };
 use crate::{
     config::ConfigFile,
     error::{IoContext, Result},
+    forge::Forge,
     game::{Target, VALHEIM},
     paths::DataDir,
     profile::ProfileStore,
@@ -354,5 +358,76 @@ async fn failed_install_keeps_live_files_then_retry_restores_exact_versions() ->
         "working installation"
     );
     recover(profile.dir()).await?;
+    Ok(())
+}
+
+#[test]
+fn a_launch_change_merges_like_a_setting() {
+    let base = setup("1");
+    let mut local = setup("2");
+    let mut remote = base.clone();
+    remote.launch.keep_achievements = Some(true);
+    let merged = review(&base, &local, &remote).merged().unwrap();
+    assert_eq!(merged.launch.keep_achievements, Some(true));
+    assert_eq!(merged.configs, local.configs);
+
+    local.launch.keep_achievements = Some(false);
+    assert!(review(&base, &local, &remote).merged().is_none());
+}
+
+#[test]
+fn game_args_with_a_path_or_a_line_break_are_not_synced() {
+    for args in ["-savedir /Users/me/saves", "-console\n-windowed"] {
+        let mut bad = Setup::default();
+        bad.launch.game_args = Some(args.to_owned());
+        assert!(validate(&bad).is_err(), "{args}");
+    }
+}
+
+#[tokio::test]
+async fn launch_settings_round_trip_and_local_paths_stay() -> Result<()> {
+    let temp = tempdir().unwrap();
+    let data = DataDir::at(temp.path().to_path_buf());
+    let forge = Forge::at(data.clone())?;
+    let profile = ProfileStore::new(data)
+        .create("default", VALHEIM, Target::Client)
+        .await?;
+    // A profile without a launch file syncs nothing of it.
+    assert!(capture(&profile).await?.launch.is_empty());
+
+    forge
+        .edit_launch_settings(&profile, |settings| {
+            settings.game_args = "-console".to_owned();
+            settings.keep_achievements = true;
+        })
+        .await?;
+    let captured = capture(&profile).await?;
+    assert_eq!(
+        captured.launch,
+        Launch {
+            game_args: Some("-console".to_owned()),
+            keep_achievements: Some(true),
+        }
+    );
+
+    let mut remote = captured;
+    remote.launch.game_args = Some("-console -windowed".to_owned());
+    remote.launch.keep_achievements = Some(false);
+    write_launch(&forge, &profile, &remote).await?;
+    assert_eq!(capture(&profile).await?, remote);
+
+    forge
+        .edit_launch_settings(&profile, |settings| {
+            settings.game_args = "-savedir /Users/me/saves".to_owned();
+        })
+        .await?;
+    let local = snapshot(&profile).await?;
+    assert_eq!(local.setup.launch.game_args, None);
+    assert_eq!(local.local_only, [Key::Launch(LaunchKey::GameArgs)]);
+    write_launch(&forge, &profile, &remote).await?;
+    assert_eq!(
+        forge.launch_settings(&profile).await?.game_args,
+        "-savedir /Users/me/saves"
+    );
     Ok(())
 }

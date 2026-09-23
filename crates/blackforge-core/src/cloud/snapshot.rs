@@ -1,4 +1,4 @@
-use super::Key;
+use super::{Key, LaunchKey};
 use blackforge_api::setup::{Mod, Setup};
 
 use crate::{
@@ -20,6 +20,12 @@ pub fn portable(key: &str, value: &str) -> bool {
         && !value.contains("%USERPROFILE%")
         && !value.contains("$HOME")
         && !value.to_ascii_lowercase().starts_with("file:")
+}
+
+/// Every argument is portable. One path of this machine keeps them all local.
+pub fn portable_args(args: &str) -> bool {
+    args.split_whitespace()
+        .all(|arg| portable("game_args", arg))
 }
 
 pub async fn capture(profile: &Profile) -> Result<Setup> {
@@ -73,12 +79,27 @@ pub async fn snapshot(profile: &Profile) -> Result<Snapshot> {
             }
         }
     }
+    if let Some(settings) = profile.launch_settings().await? {
+        setup.launch.keep_achievements = Some(settings.keep_achievements);
+        if portable_args(&settings.game_args) {
+            setup.launch.game_args = Some(settings.game_args);
+        } else {
+            local_only.push(Key::Launch(LaunchKey::GameArgs));
+        }
+    }
     validate(&setup)?;
     Ok(Snapshot { setup, local_only })
 }
 
 pub fn validate(setup: &Setup) -> Result<()> {
     manifests(setup)?;
+    if let Some(args) = &setup.launch.game_args
+        && (args.contains(['\r', '\n']) || !portable_args(args))
+    {
+        return Err(Error::Invalid(
+            "the game arguments cannot be synced".to_owned(),
+        ));
+    }
     for (file, sections) in &setup.configs {
         if !safe_file(file) {
             return Err(Error::Invalid(format!("unsafe config path: {file}")));

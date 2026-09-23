@@ -51,6 +51,8 @@ impl App for BlackforgeApp {
             crate::updates::check(false);
             crate::ui::doctor_page::check_in_background();
             crate::social::watch_requests();
+            crate::launcher::watch_steam();
+            crate::launcher::move_old_game_args();
         });
     }
 

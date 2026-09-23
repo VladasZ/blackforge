@@ -104,19 +104,24 @@ impl Sidebar {
 
     fn show_run(self: Weak<Self>, run: Run) {
         let mut button = self.run;
+        let waiting = run == Run::Idle && launcher::steam_missing();
+        let enabled = run == Run::Idle && !waiting;
+        // Before the style. Turning the button back on puts back the colors it
+        // had when it was turned off, which would undo the style.
+        button.set_enabled(enabled);
         let text = match run {
+            Run::Idle if waiting => "Open Steam first",
             Run::Idle => "Run game",
             Run::Syncing => "Syncing...",
             Run::Starting => "Starting...",
             Run::Running => "Running",
         };
-        if run == Run::Idle {
+        if enabled {
             style::primary(button, text);
         } else {
             style::ghost(button, text);
             button.set_text_color(colors::DIM);
         }
         button.set_text_size(14);
-        button.set_enabled(run == Run::Idle);
     }
 }

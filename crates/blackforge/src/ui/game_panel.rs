@@ -1,13 +1,14 @@
 //! The game card of the Settings page: the folder the game was found in, the
 //! extra arguments and the achievements switch.
 
+use blackforge_core::profile::LaunchSettings;
 use hilen::{
     refs::Weak,
     ui::{Label, Setup, Switch, TextField, VerticalAlignment, ViewData, view},
 };
 
 use crate::{
-    backend, launcher,
+    backend, cloud,
     ui::{style, toast},
 };
 
@@ -49,17 +50,20 @@ impl Setup for GamePanel {
         self.args_title.place().t(ARGS_T).l(PAD).size(400, 16);
 
         style::field(self.args, "-console");
-        self.args.set_text(launcher::game_args());
         self.args
             .place()
             .t(ARGS_T + 20.0)
             .l(PAD)
             .r(PAD)
             .h(style::FIELD_H);
-        self.args.changed.val(|text| launcher::set_game_args(&text));
+        // Saved when the field loses the focus, every save is a cloud sync.
+        self.args.editing_ended.val(|text| {
+            save(move |settings| settings.game_args = text);
+        });
 
         self.keep.place().t(KEEP_T).l(PAD).size(44, 24);
-        self.keep.on_change(save_keep_achievements);
+        self.keep
+            .on_change(|keep| save(move |settings| settings.keep_achievements = keep));
 
         style::body(self.keep_label);
         self.keep_label.set_text("Keep achievements with mods");
@@ -77,7 +81,7 @@ impl Setup for GamePanel {
             .set_text("The game blocks them when mods are loaded, real cheats still block them");
 
         self.locate();
-        self.load_keep_achievements();
+        self.load_settings();
     }
 }
 
@@ -124,17 +128,21 @@ impl GamePanel {
         );
     }
 
-    fn load_keep_achievements(mut self: Weak<Self>) {
+    fn load_settings(mut self: Weak<Self>) {
         backend::load(
             "reading the settings",
-            |forge, _| async move { Ok(forge.keep_achievements().await?) },
+            |forge, progress| async move {
+                let profile = backend::profile(forge, &progress).await?;
+                Ok(forge.launch_settings(&profile).await?)
+            },
             move |result| {
                 if !self.is_ok() {
                     return;
                 }
                 match result {
-                    Ok(keep) => {
-                        self.keep.set_on(keep);
+                    Ok(settings) => {
+                        self.args.set_text(settings.game_args);
+                        self.keep.set_on(settings.keep_achievements);
                     }
                     Err(error) => toast::failure(&error),
                 }
@@ -143,15 +151,18 @@ impl GamePanel {
     }
 }
 
-/// The plugin itself is put in place at the next start of the game.
-fn save_keep_achievements(keep: bool) {
+/// The settings live in the profile, so cloud sync carries them to the other
+/// machines. The achievements plugin itself is put in place at the next start.
+fn save(edit: impl FnOnce(&mut LaunchSettings) + Send + 'static) {
     backend::load(
         "saving the settings",
-        move |forge, _| async move { Ok(forge.set_keep_achievements(keep).await?) },
-        |result| {
-            if let Err(error) = result {
-                toast::failure(&error);
-            }
+        move |forge, progress| async move {
+            let profile = backend::profile(forge, &progress).await?;
+            Ok(forge.edit_launch_settings(&profile, edit).await?)
+        },
+        |result| match result {
+            Ok(()) => cloud::schedule(),
+            Err(error) => toast::failure(&error),
         },
     );
 }

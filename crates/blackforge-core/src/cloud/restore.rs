@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, path::Path};
 use blackforge_api::setup::Setup;
 use tokio::fs;
 
-use super::{capture, portable, snapshot::manifests, validate};
+use super::{capture, portable, portable_args, snapshot::manifests, validate};
 use crate::{
     config::{self, ConfigFile},
     error::{Error, IoContext, Result},
@@ -78,6 +78,7 @@ pub(super) async fn stage(
     staged.save(&manifest, &lock).await?;
     forge.sync(&staged, progress).await?;
     write_settings(&staged, &before, setup).await?;
+    write_launch(forge, &staged, setup).await?;
     if capture(profile).await? != before {
         return Err(Error::Invalid(
             "local setup changed during installation; review again".to_owned(),
@@ -122,6 +123,24 @@ async fn copy_tree(source: &Path, target: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// A value the setup does not have stays as the profile has it. Arguments
+/// with a path of this machine stay too, like a local config value.
+pub(super) async fn write_launch(forge: &Forge, profile: &Profile, setup: &Setup) -> Result<()> {
+    if setup.launch.is_empty() {
+        return Ok(());
+    }
+    let mut settings = forge.launch_settings(profile).await?;
+    if let Some(args) = &setup.launch.game_args
+        && portable_args(&settings.game_args)
+    {
+        settings.game_args.clone_from(args);
+    }
+    if let Some(keep) = setup.launch.keep_achievements {
+        settings.keep_achievements = keep;
+    }
+    profile.save_launch_settings(&settings).await
 }
 
 pub(super) async fn write_settings(profile: &Profile, before: &Setup, setup: &Setup) -> Result<()> {

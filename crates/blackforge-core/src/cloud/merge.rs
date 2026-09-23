@@ -10,12 +10,20 @@ pub enum Key {
         section: String,
         key: String,
     },
+    Launch(LaunchKey),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LaunchKey {
+    GameArgs,
+    KeepAchievements,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Entry {
     Mod(Mod),
     Setting(String),
+    Flag(bool),
 }
 
 #[derive(Clone, Debug)]
@@ -157,6 +165,15 @@ fn flatten(setup: &Setup) -> BTreeMap<Key, Entry> {
             }
         }
     }
+    if let Some(args) = &setup.launch.game_args {
+        entries.insert(
+            Key::Launch(LaunchKey::GameArgs),
+            Entry::Setting(args.clone()),
+        );
+    }
+    if let Some(keep) = setup.launch.keep_achievements {
+        entries.insert(Key::Launch(LaunchKey::KeepAchievements), Entry::Flag(keep));
+    }
     entries
 }
 
@@ -175,6 +192,12 @@ fn expand(entries: BTreeMap<Key, Entry>) -> Setup {
                     .entry(section)
                     .or_default()
                     .insert(key, value);
+            }
+            (Key::Launch(LaunchKey::GameArgs), Entry::Setting(args)) => {
+                setup.launch.game_args = Some(args);
+            }
+            (Key::Launch(LaunchKey::KeepAchievements), Entry::Flag(keep)) => {
+                setup.launch.keep_achievements = Some(keep);
             }
             _ => unreachable!("setup keys and values are made together"),
         }

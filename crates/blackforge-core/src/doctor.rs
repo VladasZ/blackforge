@@ -13,6 +13,7 @@ use crate::{
     install::{Installed, wanted},
     launch::{Os, preloader_path},
     profile::Profile,
+    steam,
     util::exists,
 };
 
@@ -156,6 +157,9 @@ impl Forge {
         if matches!(os, Os::MacArm | Os::MacIntel) && loader_ready {
             checks.push(quarantine_check(profile).await);
         }
+        if steam::needed(os, game.target) {
+            checks.push(steam_check().await);
+        }
         Ok(checks)
     }
 
@@ -242,6 +246,20 @@ impl Forge {
             )
             .with_fix(Some(Fix::Sync))
         })
+    }
+}
+
+async fn steam_check() -> Check {
+    match steam::running().await {
+        Ok(true) => Check::new("steam", Status::Ok, "running"),
+        Ok(false) => {
+            Check::new("steam", Status::Problem, "not running").with_fix(Some(Fix::StartSteam))
+        }
+        Err(error) => Check::new(
+            "steam",
+            Status::Warning,
+            format!("could not look for the Steam app: {error}"),
+        ),
     }
 }
 

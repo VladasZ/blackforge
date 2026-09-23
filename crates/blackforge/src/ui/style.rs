@@ -39,6 +39,8 @@ pub fn primary(button: Weak<Button>, text: &str) {
     button.set_text_size(13);
     button.set_text_color(colors::ON_ACCENT);
     button.set_color(colors::ACCENT);
+    // A button that was ghost before keeps its border otherwise.
+    button.set_border_width(0);
     button.set_corner_radius(7);
     hover::button(button, colors::ACCENT_HOVER);
 }
