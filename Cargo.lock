@@ -570,7 +570,7 @@ dependencies = [
 
 [[package]]
 name = "blackforge"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "blackforge-api",
@@ -590,7 +590,7 @@ dependencies = [
 
 [[package]]
 name = "blackforge-api"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "serde",
  "serde_json",
@@ -599,7 +599,7 @@ dependencies = [
 
 [[package]]
 name = "blackforge-cli"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "blackforge-core",
@@ -610,7 +610,7 @@ dependencies = [
 
 [[package]]
 name = "blackforge-core"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "base64 0.23.1",
  "blackforge-api",
@@ -633,7 +633,7 @@ dependencies = [
 
 [[package]]
 name = "blackforge-server"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "blackforge-api",
