@@ -1,0 +1,61 @@
+# Status plugin
+
+A small `BepInEx` plugin that runs inside the dedicated Valheim servers, Durka
+and Arkham Asylum. Every 2 seconds it writes the peers the game has connected
+right now to a JSON file. It is the fast and exact answer to "is anybody on the
+server", which decides if a server may restart.
+
+The game itself has no such answer. Its `Connections N` line comes only every
+10 minutes, and its join and leave lines disagree with each other. The Steam
+server query on the query port gets no answer with crossplay on.
+
+## The file
+
+```json
+{ "updated": 1790189793, "players": [{ "name": "Motvaizer", "id": "123" }] }
+```
+
+`updated` is unix seconds. Every connected peer is listed, also one that still
+types the password or picks a character. The file is replaced in one step, so
+a reader never sees half of it.
+
+A file older than about 15 seconds means the server is not running, is still
+starting, or the plugin is not loaded. Treat that as unknown, never as empty.
+
+On the node the file sits at `~/deployments/<name>/data/svlog/blackforge-status.json`.
+The server writes it to `/var/log/supervisor`, the folder the metrics sidecar
+mounts as `/logs`, and the path comes from `BLACKFORGE_STATUS_FILE`. Without
+that variable the plugin writes nothing.
+
+## The parts
+
+- `assets/status/Plugin.cs` is the plugin, `assets/status/BlackforgeStatus.dll`
+  the built one. It is committed because the servers download it from here.
+- The composes in `games/valheim` and `games/valheim-hard` of the `local` repo
+  set `BLACKFORGE_STATUS_URL` and `BLACKFORGE_STATUS_SHA256`. The install hook
+  downloads the dll from that url, a raw GitHub link pinned to a commit, checks
+  the sha256 and installs it next to the Thunderstore mods. A failed download
+  keeps the copy that is there.
+- The metrics sidecar reads the file. While it is fresh, `valheim_players` and
+  `valheim_player_online` come from it, else from the log lines as before.
+  `valheim_status_age_seconds` is its age, -1 when it is missing.
+
+The plugin is never installed on a game client. The app installs only the join
+and achievements plugins there.
+
+## Changing the plugin
+
+Build it like the join plugin, it compiles against the game dlls:
+
+```sh
+cd assets/status && dotnet build -c Release -p:ValheimManaged=/path/to/valheim_Data/Managed
+```
+
+Commit the new dll, then point both composes at the new commit and the new
+sha256. Pushing the composes restarts both servers, so first check that nobody
+is on them, see Rule 1 of the beekeeper skill.
+
+Test a change on a throwaway server first, never on Durka. A plain
+`docker run` of `ghcr.io/lloesche/valheim-server` on a free node, with
+`BEPINEX=true`, the dll in `/config/bepinex/plugins/blackforge-status/` and
+`BLACKFORGE_STATUS_FILE` set, shows the file within a minute of the world load.

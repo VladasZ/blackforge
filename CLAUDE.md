@@ -2,6 +2,7 @@ Read `docs/data.md` before looking at the user's data folder or profiles.
 Read `docs/sync.md` before touching cloud sync.
 Read `docs/servers.md` before touching the server list.
 Read `docs/join.md` before touching the join button plugin.
+Read `docs/status.md` before touching the server status plugin.
 
 ## Never release unverified
 
