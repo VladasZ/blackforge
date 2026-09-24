@@ -5,6 +5,7 @@ using HarmonyLib;
 using Newtonsoft.Json;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
@@ -29,6 +30,7 @@ namespace Blackforge
         private const float Padding = 16f;
         private const float TitleHeight = 64f;
         private const float BarWidth = 8f;
+        private const int RowsPerNotch = 3;
         private const float PanelWidth = 440f;
         private const float RowHeight = 34f;
         private const float IconSize = 30f;
@@ -217,7 +219,11 @@ namespace Blackforge
             scroll.horizontal = false;
             scroll.vertical = true;
             scroll.movementType = ScrollRect.MovementType.Clamped;
-            scroll.scrollSensitivity = RowHeight;
+            // The wheel delta of the game is tiny, the list moves itself.
+            scroll.scrollSensitivity = 0f;
+            WheelScroll wheel = viewport.AddComponent<WheelScroll>();
+            wheel.scroll = scroll;
+            wheel.step = RowHeight * RowsPerNotch;
             if (names.Count > ShownMax)
             {
                 GameObject track = Box(root, "Bar", new Vector2(PanelWidth - Padding - BarWidth, -Padding - TitleHeight),
@@ -380,6 +386,28 @@ namespace Blackforge
             {
                 stack.m_customData.Remove(Tiers.TagKey);
             }
+        }
+    }
+
+    // Moves a list a fixed number of rows per wheel notch, whatever size the
+    // game gives the wheel delta.
+    public class WheelScroll : MonoBehaviour, IScrollHandler
+    {
+        public ScrollRect scroll;
+        public float step;
+
+        public void OnScroll(PointerEventData data)
+        {
+            float delta = data.scrollDelta.y;
+            if (scroll == null || Mathf.Approximately(delta, 0f))
+            {
+                return;
+            }
+            RectTransform content = scroll.content;
+            float room = Mathf.Max(0f, content.rect.height - scroll.viewport.rect.height);
+            float y = Mathf.Clamp(content.anchoredPosition.y - Mathf.Sign(delta) * step, 0f, room);
+            content.anchoredPosition = new Vector2(content.anchoredPosition.x, y);
+            scroll.StopMovement();
         }
     }
 }
