@@ -21,7 +21,7 @@ const UNREACHABLE: &str = "Blackforge is not reachable, try again later";
 
 /// The port of the door, it opens at the first start of the game.
 static PORT: Mutex<Option<u16>> = Mutex::new(None);
-/// The key of the game that runs now. None while no game runs.
+/// The key of the last game start. None before the first one.
 static KEY: Mutex<Option<String>> = Mutex::new(None);
 
 /// Opens the door once per run of the app and gives its port.
@@ -53,14 +53,6 @@ pub fn new_key() -> Result<String> {
     let key = URL_SAFE_NO_PAD.encode(bytes);
     *KEY.lock().map_err(|_| anyhow!("the bridge lock broke"))? = Some(key.clone());
     Ok(key)
-}
-
-/// The game exited, nothing may ask for a code until the next start.
-pub fn close_key() {
-    match KEY.lock() {
-        Ok(mut key) => *key = None,
-        Err(error) => log::error!("the bridge key did not close: {error}"),
-    }
 }
 
 fn serve(server: &Server) {

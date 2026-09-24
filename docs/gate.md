@@ -32,7 +32,9 @@ picked at the first start of the game. Every start of the Valheim client gets a
 new random key. The launch passes both as `-blackforge-bridge <port>
 -blackforge-key <key>`, see `bridge_args` in `crates/blackforge-core/src/join.rs`.
 A request needs the key in `X-Blackforge-Key`, so no other program on the
-machine gets a code. The key stops working when the game exits.
+machine gets a code. The key stops working at the next start of the game.
+It does not stop when the started process exits, Steam often hands the game
+to a new process at once and the game runs on with the same key.
 
 The app must stay open while the game runs. A game started without the app has
 no key, and its join buttons say so.

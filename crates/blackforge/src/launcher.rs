@@ -301,8 +301,10 @@ fn launch(game_dir: Option<PathBuf>) {
 
 fn wait_for_exit(mut child: Child) {
     spawn(async move {
+        // The key stays. Steam often hands the game to a new process, so the
+        // child exits at once while the game runs on and still needs its key.
+        // The next start replaces the key.
         let status = child.wait().await;
-        bridge::close_key();
         on_main(move || {
             set_run(Run::Idle);
             social::game_exited();
