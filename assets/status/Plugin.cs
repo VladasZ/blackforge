@@ -40,7 +40,9 @@ namespace Blackforge
         // The client plugin shows this text in place of the game's own error.
         private const string GateRpc = "BlackforgeGate";
         private const string NoCode = "This server has no password. Join it with the button Blackforge adds to the main menu.";
-        private const string Refused = "Blackforge did not let you in. Ask the owner of the server to add you as a member.";
+        // The backend refuses a stranger and a code that expired or was used
+        // the same way, so the text names both.
+        private const string Refused = "Blackforge did not let you in. You are not a member, ask the owner of the server to add you. Or the join took too long, click the join button again.";
         private const string Unreachable = "Blackforge is not reachable, try again later.";
 
         private class VerifyBody

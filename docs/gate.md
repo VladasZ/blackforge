@@ -7,13 +7,17 @@ join, and every join is checked live with the backend.
 ## One join
 
 1. The player clicks a join button in the Valheim menu, see `join.md`.
-2. The join plugin asks the running Blackforge app for a code, over
-   `http://127.0.0.1:<port>/join/<server id>`. It sends the key the app gave
-   the game at start.
-3. The app is signed in with Google. It asks `POST /api/servers/{id}/join` for
-   a one time code and gives the whole answer to the plugin as JSON. For a
-   competitive server the answer also holds the forbidden items, see
-   `competitive.md`.
+2. The join plugin asks the running Blackforge app for the rules of the
+   server, over `http://127.0.0.1:<port>/rules/<server id>`. It sends the key
+   the app gave the game at start. The app is signed in with Google and asks
+   `POST /api/servers/{id}/rules`. That checks the membership and gives the
+   rules of a competitive server, see `competitive.md`. It makes no code. A
+   stranger hears here that they are no member.
+3. Character select opens. At Start the plugin asks the app for a one time
+   code at `/join/<server id>`, the app asks `POST /api/servers/{id}/join`.
+   The code is made only now, so the time a player spends in character select
+   never eats into its 2 minutes. A failed request keeps the player in
+   character select and shows the reason.
 4. The plugin puts the code into the invite key of the game with
    `ZNet.SetInviteSecretKey`. The game sends that key to the server in its
    handshake. No vanilla code sets that key, so it is free to use.
@@ -48,9 +52,12 @@ tables.
   are the member list of the admin, no other account may use them. One list
   covers every server of the admin. The admin is always let in and is never on
   the list.
-- `POST /api/servers/{id}/join` gives a code to the owner of the server or a
-  member of the owner's list. A code is 2 random uuids. Only its sha256 is
-  stored, it lives `CODE_SECONDS`, 2 minutes.
+- `POST /api/servers/{id}/rules` gives the owner of the server or a member of
+  the owner's list the rules of the server, `JoinRules`. It makes no code.
+- `POST /api/servers/{id}/join` gives such a player a code, `JoinCode`. A code
+  is 2 random uuids. Only its sha256 is stored, it lives `CODE_SECONDS`, 2
+  minutes. The trade refuses an expired or used code like a stranger, so the
+  refusal text of the server plugin names both causes.
 - `POST /api/gate/verify` wants `Authorization: Bearer <BLACKFORGE_GATE_SECRET>`.
   It deletes the code on its first try, then checks that it has not expired,
   that it is for the server of that name, and that the player is still a

@@ -1,6 +1,7 @@
-//! The local door the join plugin knocks on at a click on a join button. The
-//! app is signed in with Google, so it asks the backend for a one time join
-//! code and hands it to the game. It listens on 127.0.0.1 only, and a request
+//! The local door the join plugin knocks on, for the rules of a server at the
+//! click on a join button and for a code at Start in character select. The
+//! app is signed in with Google, so it asks the backend for them
+//! and hands them to the game. It listens on 127.0.0.1 only, and a request
 //! must carry the key this app gave the game at its start, see `docs/gate.md`.
 
 use std::{sync::Mutex, thread};
@@ -15,6 +16,7 @@ use tokio::runtime::Builder;
 use crate::social;
 
 const KEY_HEADER: &str = "X-Blackforge-Key";
+const RULES_PATH: &str = "/rules/";
 const JOIN_PATH: &str = "/join/";
 const SIGN_IN: &str = "Sign in to Blackforge to join";
 const UNREACHABLE: &str = "Blackforge is not reachable, try again later";
@@ -86,13 +88,26 @@ fn key_matches(request: &Request) -> bool {
         .is_some_and(|header| constant_time_eq(header.value.as_bytes(), key.as_bytes()))
 }
 
-/// The status and the text the plugin shows. A 200 carries the `JoinCode` of
-/// the backend as JSON.
+/// What the plugin asks for.
+enum Door {
+    /// At the click on a join button, the member check and the rules.
+    Rules,
+    /// At Start in character select, the one time code.
+    Join,
+}
+
+/// The status and the text the plugin shows. A 200 carries the `JoinRules` or
+/// the `JoinCode` of the backend as JSON.
 async fn answer(request: &Request) -> (u16, String) {
     if request.method() != &Method::Post {
         return (405, "only POST".to_owned());
     }
-    let Some(server_id) = request.url().strip_prefix(JOIN_PATH) else {
+    let url = request.url();
+    let (door, server_id) = if let Some(id) = url.strip_prefix(RULES_PATH) {
+        (Door::Rules, id)
+    } else if let Some(id) = url.strip_prefix(JOIN_PATH) {
+        (Door::Join, id)
+    } else {
         return (404, "no such door".to_owned());
     };
     if !key_matches(request) {
@@ -104,24 +119,26 @@ async fn answer(request: &Request) -> (u16, String) {
     let client = match social::client() {
         Ok(client) => client,
         Err(error) => {
-            log::warn!("no client for a join code: {error:#}");
+            log::warn!("no client for the join plugin: {error:#}");
             return (500, UNREACHABLE.to_owned());
         }
     };
-    match client.join_code(server_id).await {
-        // The plugin needs the rules of a competitive server too, it checks
-        // the character before the join.
-        Ok(join) => match serde_json::to_string(&join) {
-            Ok(text) => (200, text),
-            Err(error) => {
-                log::error!("the join code did not serialize: {error}");
-                (500, UNREACHABLE.to_owned())
-            }
-        },
+    let answer = match door {
+        Door::Rules => client
+            .join_rules(server_id)
+            .await
+            .and_then(|rules| Ok(serde_json::to_string(&rules)?)),
+        Door::Join => client
+            .join_code(server_id)
+            .await
+            .and_then(|code| Ok(serde_json::to_string(&code)?)),
+    };
+    match answer {
+        Ok(text) => (200, text),
         Err(Error::NotSignedIn) => (401, SIGN_IN.to_owned()),
         Err(Error::Server(words)) => (403, words),
         Err(error) => {
-            log::warn!("no join code: {error:#}");
+            log::warn!("no answer for the join plugin: {error:#}");
             (502, UNREACHABLE.to_owned())
         }
     }

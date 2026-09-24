@@ -2,9 +2,9 @@
 
 The Valheim main menu gets a big join button per server in the top left corner,
 like "Join Durka" and "Join Arkham Asylum". A click takes the player to character
-select. After Start the game joins that server. There is no password, a click
-first gets a one time code from the running app and the server lets in only a
-code from blackforge, see `gate.md`.
+select. After Start the game joins that server. There is no password. A click
+gets the rules of the server from the running app, Start gets a one time code,
+and the server lets in only a code from blackforge, see `gate.md`.
 
 ## The parts
 
@@ -56,7 +56,7 @@ crossplay the players go through the PlayFab relay, so no port on pc1 is open
 and the port in the address is only a label. All servers use the same address,
 `86.100.76.6:2456`.
 
-A click first gets a join code from the app, see `gate.md`. Then it searches
+A click first gets the rules of the server from the app, see `gate.md`. Then it searches
 the lobbies by the address, the server name, and the active
 flag, the keys are `ServerIpSearchKey`, `ServerNameSearchKey` and
 `IsActiveSearchKey` of `ZPlayFabMatchmaking`. The stock join by address alone

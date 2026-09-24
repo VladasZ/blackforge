@@ -18,7 +18,9 @@ namespace Blackforge
     // right of the character and turns Start off. An item carries the world id
     // as its tag when it was found or made in that world, and such an item is
     // allowed there. In the game the server asks for the inventory, and once it
-    // cleared the player every new item gets the tag of that world.
+    // cleared the player every new item gets the tag of that world. Start in
+    // character select also asks for the one time code of every join from a
+    // join button, see HoldStart.
     public static class Competitive
     {
         private const string CheckRpc = "BlackforgeCheck";
@@ -54,9 +56,11 @@ namespace Blackforge
             public string t;
         }
 
+        // A join that waits in character select, for any server of the list.
         private class Waiting
         {
-            public string server;
+            public JoinPlugin.JoinServer server;
+            public bool competitive;
             public string world;
             public Dictionary<string, ForbiddenItem> forbidden;
         }
@@ -65,6 +69,9 @@ namespace Blackforge
         // The competitive join that waits in character select.
         private static Waiting waiting;
         private static bool blocked;
+        // The code for the waiting join is in the invite key, Start may go on.
+        private static bool codeReady;
+        private static bool askingCode;
         private static GameObject panel;
         // The world of the session that cleared this player, new items get it.
         private static string cleared;
@@ -107,20 +114,22 @@ namespace Blackforge
         }
 
         // The join answer of the app arrived, the join goes on in character select.
-        public static void Expect(string serverName, Ticket ticket)
+        public static void Expect(JoinPlugin.JoinServer server, Ticket ticket)
         {
-            if (ticket == null || !ticket.competitive)
-            {
-                waiting = null;
-                return;
-            }
+            codeReady = false;
             waiting = new Waiting
             {
-                server = serverName,
+                server = server,
+                competitive = ticket.competitive,
                 world = ticket.world,
-                forbidden = Tiers.Expand(ticket.forbidden, ticket.allowed, log.LogWarning),
+                forbidden = ticket.competitive
+                    ? Tiers.Expand(ticket.forbidden, ticket.allowed, log.LogWarning)
+                    : new Dictionary<string, ForbiddenItem>(),
             };
-            log.LogInfo($"{serverName} is competitive, {waiting.forbidden.Count} items are forbidden");
+            if (waiting.competitive)
+            {
+                log.LogInfo($"{server.name} is competitive, {waiting.forbidden.Count} items are forbidden");
+            }
         }
 
         // Back in the menu, nothing waits any more.
@@ -128,6 +137,7 @@ namespace Blackforge
         {
             waiting = null;
             blocked = false;
+            codeReady = false;
             if (panel != null)
             {
                 Object.Destroy(panel);
@@ -144,7 +154,7 @@ namespace Blackforge
             }
             blocked = false;
             Player player = __instance.GetPreviewPlayer();
-            if (waiting == null || !__instance.m_queuedJoinServer.IsValid || player == null)
+            if (waiting == null || !waiting.competitive || !__instance.m_queuedJoinServer.IsValid || player == null)
             {
                 __instance.m_csStartButton.interactable = true;
                 return;
@@ -160,11 +170,42 @@ namespace Blackforge
             }
         }
 
-        // The button is off, this also stops the gamepad key and any mod that
-        // clicks it.
+        // Start of a join from a join button. A blocked character does not
+        // start, this also stops the gamepad key and any mod that clicks it.
+        // Otherwise the first press asks the app for the one time code and
+        // presses Start again once the code is in the invite key. A code lives
+        // two minutes, so it is made only now, not at the click in the menu.
         private static bool HoldStart(FejdStartup __instance)
         {
-            return !(blocked && __instance.m_queuedJoinServer.IsValid);
+            if (waiting == null || !__instance.m_queuedJoinServer.IsValid)
+            {
+                return true;
+            }
+            if (blocked)
+            {
+                return false;
+            }
+            if (codeReady)
+            {
+                codeReady = false;
+                return true;
+            }
+            if (askingCode)
+            {
+                return false;
+            }
+            askingCode = true;
+            FejdStartup menu = __instance;
+            JoinPlugin.AskCode(
+                waiting.server,
+                () =>
+                {
+                    askingCode = false;
+                    codeReady = true;
+                    menu.OnCharacterStart();
+                },
+                () => askingCode = false);
+            return false;
         }
 
         private static bool IsForbidden(ItemDrop.ItemData item, Dictionary<string, ForbiddenItem> forbidden, string world)
@@ -194,7 +235,7 @@ namespace Blackforge
             float listHeight = Math.Min(names.Count, ShownMax) * RowHeight;
             rect.sizeDelta = new Vector2(PanelWidth, Padding * 2 + TitleHeight + listHeight);
 
-            Text(root, model, $"{waiting.server} is competitive. Leave these items in another world:",
+            Text(root, model, $"{waiting.server.name} is competitive. Leave these items in another world:",
                 TitleSize, new Vector2(Padding, -Padding), new Vector2(PanelWidth - Padding * 2, TitleHeight));
 
             // A long list scrolls with the mouse wheel or the bar on the right.

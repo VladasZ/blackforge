@@ -1,6 +1,7 @@
 //! The gate of the game servers. The admin keeps one member list for all of
-//! their servers, a member asks for a one time join code at the click on a
-//! join button, and the plugin in the game server trades the code for the
+//! their servers, a member asks for the rules of a server at the click on a
+//! join button and for a one time join code at Start in character select, and
+//! the plugin in the game server trades the code for the
 //! username behind it. Only the servers know the gate secret, so only they
 //! can trade a code.
 
@@ -8,7 +9,7 @@ use std::{env, sync::Arc};
 
 use blackforge_api::{
     competitive::{Progress, Rules, Tiers},
-    gate::{AddMember, CODE_SECONDS, JoinCode, Member, Verified, Verify},
+    gate::{AddMember, CODE_SECONDS, JoinCode, JoinRules, Member, Verified, Verify},
 };
 use constant_time_eq::constant_time_eq;
 use hilen_server::tracing::{info, warn};
@@ -45,6 +46,7 @@ pub fn routes(tiers: Tiers) -> Router<PgPool> {
     Router::new()
         .route("/api/members", get(members).post(add_member))
         .route("/api/members/{username}", delete(remove_member))
+        .route("/api/servers/{id}/rules", post(rules))
         .route("/api/servers/{id}/join", post(join))
         .route("/api/gate/verify", post(verify))
         .route("/api/gate/progress", post(progress))
@@ -122,16 +124,11 @@ WHERE c.server_id = s.id AND s.owner_id = $1 AND c.user_id = $2",
 /// The server row a join needs besides the check.
 type JoinRow = (String, String, String, bool, Option<String>, Vec<String>);
 
-async fn join(
-    user: User,
-    Extension(tiers): Extension<Arc<Tiers>>,
-    State(db): State<PgPool>,
-    Path(id): Path<String>,
-) -> Result<Json<JoinCode>, AppError> {
-    require_username(&db, &user).await?;
-    let id = Uuid::parse_str(&id).map_err(|_| AppError::NotFound)?;
-    // The owner of the server or a member of the owner's list. The trade of
-    // the code runs the same check again.
+/// The server of the path, if the user is its owner or a member of the
+/// owner's list. The trade of a code runs the same check again.
+async fn allowed_server(db: &PgPool, user: &User, id: &str) -> Result<(Uuid, JoinRow), AppError> {
+    require_username(db, user).await?;
+    let id = Uuid::parse_str(id).map_err(|_| AppError::NotFound)?;
     let allowed: Option<JoinRow> = sqlx::query_as(
         r"SELECT s.name, p.username, s.game, s.competitive, s.world, s.boss_keys
 FROM servers s JOIN profiles p ON p.user_id = s.owner_id
@@ -140,21 +137,53 @@ WHERE s.id = $1 AND (s.owner_id = $2 OR EXISTS (
     )
     .bind(id)
     .bind(user.id)
-    .fetch_optional(&db)
+    .fetch_optional(db)
     .await?;
-    let Some((name, owner, game, competitive, world, dead)) = allowed else {
-        let exists: Option<(String, String)> = sqlx::query_as(
-            r"SELECT s.name, p.username FROM servers s JOIN profiles p ON p.user_id = s.owner_id
+    if let Some(row) = allowed {
+        return Ok((id, row));
+    }
+    let exists: Option<(String, String)> = sqlx::query_as(
+        r"SELECT s.name, p.username FROM servers s JOIN profiles p ON p.user_id = s.owner_id
 WHERE s.id = $1",
-        )
-        .bind(id)
-        .fetch_optional(&db)
-        .await?;
-        let (name, owner) = exists.ok_or(AppError::NotFound)?;
-        return Err(AppError::BadRequest(format!(
-            "you are not a member of {name}, ask {owner} to add you"
-        )));
-    };
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await?;
+    let (name, owner) = exists.ok_or(AppError::NotFound)?;
+    Err(AppError::BadRequest(format!(
+        "you are not a member of {name}, ask {owner} to add you"
+    )))
+}
+
+/// Asked at the click on a join button, before character select. It makes no
+/// code, a player may stay in character select longer than a code lives.
+async fn rules(
+    user: User,
+    Extension(tiers): Extension<Arc<Tiers>>,
+    State(db): State<PgPool>,
+    Path(id): Path<String>,
+) -> Result<Json<JoinRules>, AppError> {
+    let (_, (_, _, game, competitive, world, dead)) = allowed_server(&db, &user, &id).await?;
+    let Rules {
+        competitive,
+        forbidden,
+        allowed,
+    } = tiers::rules(&tiers, &game, competitive, &dead);
+    Ok(Json(JoinRules {
+        competitive,
+        world,
+        forbidden,
+        allowed,
+    }))
+}
+
+/// Asked at Start in character select, the game joins right after.
+async fn join(
+    user: User,
+    State(db): State<PgPool>,
+    Path(id): Path<String>,
+) -> Result<Json<JoinCode>, AppError> {
+    let (id, (name, owner, ..)) = allowed_server(&db, &user, &id).await?;
     info!("join code for {name} of {owner}");
     sqlx::query("DELETE FROM join_codes WHERE expires_at < now()")
         .execute(&db)
@@ -175,18 +204,7 @@ SELECT code FROM made",
     .bind(CODE_SECONDS)
     .fetch_one(&db)
     .await?;
-    let Rules {
-        competitive,
-        forbidden,
-        allowed,
-    } = tiers::rules(&tiers, &game, competitive, &dead);
-    Ok(Json(JoinCode {
-        code,
-        competitive,
-        world,
-        forbidden,
-        allowed,
-    }))
+    Ok(Json(JoinCode { code }))
 }
 
 fn bearer(headers: &HeaderMap) -> Option<&str> {
@@ -304,16 +322,19 @@ mod tests {
                 .status(),
             StatusCode::UNAUTHORIZED
         );
-        assert_eq!(
-            client
-                .post(format!(
-                    "{base}/api/servers/8d5f1d3e-0d5f-4d1e-9d5e-1d5f1d3e0d5f/join"
-                ))
-                .send()
-                .await?
-                .status(),
-            StatusCode::UNAUTHORIZED
-        );
+        for route in ["rules", "join"] {
+            assert_eq!(
+                client
+                    .post(format!(
+                        "{base}/api/servers/8d5f1d3e-0d5f-4d1e-9d5e-1d5f1d3e0d5f/{route}"
+                    ))
+                    .send()
+                    .await?
+                    .status(),
+                StatusCode::UNAUTHORIZED,
+                "{route} without a login"
+            );
+        }
         let verify = client
             .post(format!("{base}/api/gate/verify"))
             .header("Authorization", "Bearer wrong")

@@ -101,14 +101,15 @@ check stops honest mistakes and old apps, not a determined cheater.
 - `backend/server/src/tiers.rs` loads `tiers.toml`, a test checks every row.
 - `backend/server/src/gate.rs`: `POST /api/gate/progress` with the gate
   secret. The server sends its name, its world id and its boss keys, the
-  answer is `Rules`. `POST /api/servers/{id}/join` adds `competitive`, `world`,
-  `forbidden` and `allowed` to the code.
+  answer is `Rules`. `POST /api/servers/{id}/rules` gives `competitive`,
+  `world`, `forbidden` and `allowed` to the join plugin at the click, see
+  `gate.md`.
 - Migration `0009` adds `competitive`, `world`, `boss_keys` and `progress_at`
   to `servers`.
 - The Competitive switch of the server form sets the flag, only the admin sees
   it. No server restart is needed.
-- `crates/blackforge/src/bridge.rs` hands the whole join answer to the plugin
-  as JSON.
+- `crates/blackforge/src/bridge.rs` hands the rules and later the code to the
+  plugin as JSON.
 - `assets/join/Competitive.cs`: character select, the panel, the tags and the
   reports.
 - `assets/status/Competitive.cs`: the progress, the inventory check and the

@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use blackforge_api::{
     ApiError, FoundUser, FriendName, Friends, Me, Search, SetUsername, SharedProfile, Status,
-    gate::{AddMember, JoinCode, Member},
+    gate::{AddMember, JoinCode, JoinRules, Member},
     servers::{SaveServer, Server},
     setup::{Account, HistoryRow, Restore, Save, Saved},
 };
@@ -160,6 +160,14 @@ impl SocialClient {
     }
 
     /// A one time code the game trades for a join of the server.
+    /// The member check and the rules of a server, asked at the click on a
+    /// join button. It makes no code.
+    pub async fn join_rules(&self, server_id: &str) -> Result<JoinRules> {
+        let path = format!("/api/servers/{server_id}/rules");
+        self.read(self.request(Method::POST, &path)).await
+    }
+
+    /// A one time join code, asked at Start in character select.
     pub async fn join_code(&self, server_id: &str) -> Result<JoinCode> {
         let path = format!("/api/servers/{server_id}/join");
         self.read(self.request(Method::POST, &path)).await

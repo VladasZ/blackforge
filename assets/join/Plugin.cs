@@ -15,13 +15,14 @@ namespace Blackforge
 {
     // Main menu buttons that join the servers in servers.json, which the app
     // writes next to this dll before every start. A click first asks the
-    // running app for a one time code. The app is signed in with Google, and the
-    // servers let in nobody without a code, see docs/gate.md. The code goes into
-    // the invite key, which the game sends to the server in its handshake. With
-    // crossplay the servers share one public address, the port in it is only a
-    // lobby label, so a button finds its PlayFab lobby by the address and the
-    // server name. Then it queues a join to that host, the same queue a Steam
-    // invite fills, and the game shows character select.
+    // running app for the member check and the rules of the server, and Start
+    // in character select asks it for a one time code. The app is signed in with
+    // Google, and the servers let in nobody without a code, see docs/gate.md.
+    // The code goes into the invite key, which the game sends to the server in
+    // its handshake. With crossplay the servers share one public address, the
+    // port in it is only a lobby label, so a button finds its PlayFab lobby by
+    // the address and the server name. Then it queues a join to that host, the
+    // same queue a Steam invite fills, and the game shows character select.
     [BepInPlugin("xyz.vladas.blackforge.join", "Blackforge Join", "4.0.0")]
     public class JoinPlugin : BaseUnityPlugin
     {
@@ -36,6 +37,9 @@ namespace Blackforge
         private const string PortArg = "-blackforge-bridge";
         private const string KeyArg = "-blackforge-key";
         private const string KeyHeader = "X-Blackforge-Key";
+        // The doors of the app, see bridge.rs in the blackforge crate.
+        private const string RulesDoor = "rules";
+        private const string JoinDoor = "join";
         private const int AskTimeout = 20;
         // The server plugin sends its reason for a refusal in this rpc.
         private const string GateRpc = "BlackforgeGate";
@@ -54,8 +58,8 @@ namespace Blackforge
             public string address;
         }
 
-        // The answer of the app, `JoinCode` of blackforge-api.
-        public class JoinAnswer : Competitive.Ticket
+        // The answer at the join door, `JoinCode` of blackforge-api.
+        public class JoinAnswer
         {
             public string code;
         }
@@ -258,15 +262,41 @@ namespace Blackforge
             {
                 return;
             }
-            instance.StartCoroutine(AskAndJoin(server));
+            // The click gets only the member check and the rules. The code
+            // comes at Start in character select, see Competitive.HoldStart,
+            // since a code lives only two minutes.
+            instance.StartCoroutine(Ask<Competitive.Ticket>(RulesDoor, server, ticket =>
+            {
+                Competitive.Expect(server, ticket);
+                FindAndJoin(server);
+            }, null));
         }
 
-        // The app gets a one time code from blackforge for this server. The
-        // code lives two minutes, the join below uses it right away.
-        private static IEnumerator AskAndJoin(JoinServer server)
+        // A one time code for the server, asked at Start in character select.
+        // It goes into the invite key the game sends in its handshake.
+        public static void AskCode(JoinServer server, Action onCode, Action onFail)
+        {
+            instance.StartCoroutine(Ask<JoinAnswer>(JoinDoor, server, answer =>
+            {
+                if (string.IsNullOrEmpty(answer.code))
+                {
+                    Warn(server, AppClosed);
+                    onFail?.Invoke();
+                    return;
+                }
+                ZNet.SetInviteSecretKey(answer.code);
+                onCode();
+            }, onFail));
+        }
+
+        // Asks the running app at one of its doors. A failure shows its
+        // reason in a popup and calls onFail.
+        private static IEnumerator Ask<T>(string door, JoinServer server, Action<T> onAnswer, Action onFail)
+            where T : class
         {
             asking = true;
-            string url = $"http://127.0.0.1:{bridgePort}/join/{UnityWebRequest.EscapeURL(server.id)}";
+            string url = $"http://127.0.0.1:{bridgePort}/{door}/{UnityWebRequest.EscapeURL(server.id)}";
+            T answer = null;
             using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
             {
                 request.downloadHandler = new DownloadHandlerBuffer();
@@ -275,39 +305,36 @@ namespace Blackforge
                 yield return request.SendWebRequest();
                 asking = false;
 
+                string text = request.downloadHandler.text;
                 if (request.result == UnityWebRequest.Result.ConnectionError)
                 {
-                    log.LogInfo($"no answer from the app for {server.name}: {request.error}");
+                    log.LogInfo($"no answer from the app at {door} for {server.name}: {request.error}");
                     Warn(server, AppClosed);
-                    yield break;
                 }
-                string text = request.downloadHandler.text;
-                if (request.responseCode != 200 || string.IsNullOrEmpty(text))
+                else if (request.responseCode != 200 || string.IsNullOrEmpty(text))
                 {
-                    log.LogInfo($"no code for {server.name}: {request.responseCode} {text}");
+                    log.LogInfo($"refused at {door} for {server.name}: {request.responseCode} {text}");
                     Warn(server, string.IsNullOrEmpty(text) ? AppClosed : text);
-                    yield break;
                 }
-                JoinAnswer answer;
-                try
+                else
                 {
-                    answer = JsonConvert.DeserializeObject<JoinAnswer>(text);
+                    try
+                    {
+                        answer = JsonConvert.DeserializeObject<T>(text);
+                    }
+                    catch (Exception error)
+                    {
+                        log.LogWarning($"the app answered nothing usable at {door} for {server.name}: {error.Message}");
+                        Warn(server, AppClosed);
+                    }
                 }
-                catch (Exception error)
-                {
-                    log.LogWarning($"the app answered no join for {server.name}: {error.Message}");
-                    Warn(server, AppClosed);
-                    yield break;
-                }
-                if (string.IsNullOrEmpty(answer?.code))
-                {
-                    Warn(server, AppClosed);
-                    yield break;
-                }
-                ZNet.SetInviteSecretKey(answer.code);
-                Competitive.Expect(server.name, answer);
             }
-            FindAndJoin(server);
+            if (answer == null)
+            {
+                onFail?.Invoke();
+                yield break;
+            }
+            onAnswer(answer);
         }
 
         private static void FindAndJoin(JoinServer server)
