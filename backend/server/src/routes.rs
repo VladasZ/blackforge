@@ -55,7 +55,7 @@ pub(crate) async fn require_username(db: &PgPool, user: &User) -> Result<(), App
 }
 
 /// The user behind a name somebody typed.
-async fn user_named(db: &PgPool, name: &str) -> Result<Uuid, AppError> {
+pub(crate) async fn user_named(db: &PgPool, name: &str) -> Result<Uuid, AppError> {
     let name =
         username::normalize(name).map_err(|error| AppError::BadRequest(error.to_string()))?;
     let row: Option<(Uuid,)> = sqlx::query_as("SELECT user_id FROM profiles WHERE username = $1")

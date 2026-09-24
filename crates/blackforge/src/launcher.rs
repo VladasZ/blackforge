@@ -11,6 +11,7 @@ use std::{
 use blackforge_core::{
     Error,
     game::Target,
+    join,
     launch::{LaunchInput, Os, doorstop_major, inherited_env, plan, spawn as spawn_game},
     progress::Progress,
     steam,
@@ -24,7 +25,7 @@ use hilen::{
 use tokio::process::Child;
 
 use crate::{
-    backend,
+    backend, bridge,
     cloud::{self, Launch},
     social,
     ui::{doctor_page, sidebar, toast},
@@ -251,11 +252,16 @@ fn launch(game_dir: Option<PathBuf>) {
             };
             let doorstop_major = doorstop_major(profile.dir()).await;
             let settings = forge.launch_settings(&profile).await?;
-            let game_args: Vec<String> = settings
+            let mut game_args: Vec<String> = settings
                 .game_args
                 .split_whitespace()
                 .map(str::to_owned)
                 .collect();
+            // The join plugin asks this app for a code at a click on a join
+            // button, the servers let nobody in without one.
+            if join::applies_to(&game) {
+                game_args.extend(join::bridge_args(bridge::open()?, &bridge::new_key()?));
+            }
             let plan = plan(&LaunchInput {
                 os: Os::current()?,
                 game: &game,
@@ -296,6 +302,7 @@ fn launch(game_dir: Option<PathBuf>) {
 fn wait_for_exit(mut child: Child) {
     spawn(async move {
         let status = child.wait().await;
+        bridge::close_key();
         on_main(move || {
             set_run(Run::Idle);
             social::game_exited();

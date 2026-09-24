@@ -34,6 +34,8 @@ services:
       DATABASE_URL: postgres://blackforge:${DB_PASSWORD}@db:5432/blackforge
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      # Shared with the game servers, only they may trade a join code.
+      BLACKFORGE_GATE_SECRET: ${BLACKFORGE_GATE_SECRET}
       RUST_LOG: info
     ports:
       - "8087:3000"

@@ -4,7 +4,8 @@ A registered game server is a name and the mods a player needs to join it, with
 exact versions. A player opens the Servers page, sees every server, and one
 button installs what their profile lacks. Nobody types mod names by hand.
 
-The password of a server is never part of this, the game asks for it. A server
+Players join a server without a password. Blackforge lets them in, the owner
+keeps the list of who may join, see `gate.md`. A server
 of the join admin can also carry a join address. The app then gives it a join
 button in the Valheim menu, see `join.md`. Any other server carries only the
 mods.
@@ -22,7 +23,8 @@ mods.
   it. `fetch` reads the public list over the plain HTTP client. `needs` compares
   a profile with a server, `Forge::install_server` applies the list.
 - `crates/blackforge/src/ui/servers_page.rs` is the page, `server_modal.rs` the
-  form that registers or edits a server.
+  form that registers or edits a server. `members_modal.rs` is the member list
+  of an owner, the Members button shows once the user owns a server.
 
 ## Routes
 

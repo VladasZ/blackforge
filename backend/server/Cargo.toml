@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 blackforge-api = { workspace = true }
+constant_time_eq = { workspace = true }
 hilen-server = { workspace = true }
 reqwest = { workspace = true }
 rust-embed = { workspace = true }

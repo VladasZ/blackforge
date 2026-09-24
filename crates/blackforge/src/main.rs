@@ -6,6 +6,7 @@
 mod app;
 mod assets;
 mod backend;
+mod bridge;
 mod cloud;
 mod icons;
 mod launcher;

@@ -17,6 +17,7 @@ mod history_modal;
 mod hover;
 mod icon_button;
 mod icon_label_button;
+mod members_modal;
 mod mod_icon;
 mod mod_info;
 mod mod_pills;

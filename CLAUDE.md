@@ -3,6 +3,7 @@ Read `docs/sync.md` before touching cloud sync.
 Read `docs/servers.md` before touching the server list.
 Read `docs/join.md` before touching the join button plugin.
 Read `docs/status.md` before touching the server status plugin.
+Read `docs/gate.md` before touching the join codes, members or the server gate.
 
 ## Never release unverified
 

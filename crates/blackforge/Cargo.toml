@@ -16,17 +16,21 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+base64 = { workspace = true }
+constant_time_eq = { workspace = true }
 blackforge-api = { workspace = true }
 blackforge-core = { workspace = true }
 chrono = { workspace = true }
 dotenvy = { workspace = true }
 gethostname = { workspace = true }
+getrandom = { workspace = true }
 hilen = { workspace = true, features = ["login"] }
 image = { workspace = true }
 log = { workspace = true }
 regex = { workspace = true }
 serde_json = { workspace = true }
 timeago = { workspace = true }
+tiny_http = { workspace = true }
 tokio = { workspace = true }
 
 [build-dependencies]

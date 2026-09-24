@@ -2,6 +2,7 @@
 //! engine, the friends api of the app, and the list of broken mods.
 
 mod broken;
+mod gate;
 mod routes;
 mod servers;
 mod site;
@@ -45,6 +46,7 @@ async fn main() -> Result<()> {
         .merge(routes::routes())
         .merge(sync::routes())
         .merge(servers::routes())
+        .merge(gate::routes())
         .merge(broken::routes(broken))
         .merge(site::routes())
         .with_state(db);

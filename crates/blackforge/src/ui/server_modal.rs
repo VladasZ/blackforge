@@ -99,7 +99,7 @@ impl Setup for ServerModal {
         style::dim(self.hint);
         self.hint.set_multiline(true);
         self.hint.set_text(
-            "Switch on the mods a player must have to join. The versions are the ones in your profile. The password stays out of blackforge, the game asks for it.",
+            "Switch on the mods a player must have to join. The versions are the ones in your profile. Players join with no password, add them under Members.",
         );
         self.hint.place().t(PAD + 30.0).l(PAD).r(PAD).h(34);
 

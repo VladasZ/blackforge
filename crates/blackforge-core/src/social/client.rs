@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use blackforge_api::{
     ApiError, FoundUser, FriendName, Friends, Me, Search, SetUsername, SharedProfile, Status,
+    gate::{AddMember, JoinCode, Member},
     servers::{SaveServer, Server},
     setup::{Account, HistoryRow, Restore, Save, Saved},
 };
@@ -138,6 +139,30 @@ impl SocialClient {
     pub async fn delete_server(&self, id: &str) -> Result<()> {
         let path = format!("/api/servers/{id}");
         self.send(self.request(Method::DELETE, &path)).await
+    }
+
+    /// Who may join my servers, one list for all of them.
+    pub async fn members(&self) -> Result<Vec<Member>> {
+        self.read(self.request(Method::GET, "/api/members")).await
+    }
+
+    pub async fn add_member(&self, username: &str) -> Result<Vec<Member>> {
+        let body = AddMember {
+            username: username.to_owned(),
+        };
+        self.read(self.request(Method::POST, "/api/members").json(&body))
+            .await
+    }
+
+    pub async fn remove_member(&self, username: &str) -> Result<Vec<Member>> {
+        let path = format!("/api/members/{username}");
+        self.read(self.request(Method::DELETE, &path)).await
+    }
+
+    /// A one time code the game trades for a join of the server.
+    pub async fn join_code(&self, server_id: &str) -> Result<JoinCode> {
+        let path = format!("/api/servers/{server_id}/join");
+        self.read(self.request(Method::POST, &path)).await
     }
 
     async fn friend_action(&self, action: &str, username: &str) -> Result<()> {

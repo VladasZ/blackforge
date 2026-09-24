@@ -22,6 +22,8 @@
     <Reference Include="assembly_valheim" HintPath="$(ValheimManaged)\assembly_valheim.dll" Publicize="true" Private="false" />
     <Reference Include="UnityEngine" HintPath="$(ValheimManaged)\UnityEngine.dll" Private="false" />
     <Reference Include="UnityEngine.CoreModule" HintPath="$(ValheimManaged)\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="UnityEngine.UnityWebRequestModule" HintPath="$(ValheimManaged)\UnityEngine.UnityWebRequestModule.dll" Private="false" />
+    <Reference Include="Newtonsoft.Json" HintPath="$(ValheimManaged)\Newtonsoft.Json.dll" Private="false" />
   </ItemGroup>
 
 </Project>

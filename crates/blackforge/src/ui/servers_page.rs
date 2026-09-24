@@ -1,7 +1,7 @@
 //! Registered game servers, every one with the mods it requires. A player
 //! installs what their profile lacks with one button, an owner registers,
-//! edits or removes their own servers. The address and the password of a
-//! server are no part of this, players join through the game as before.
+//! edits or removes their own servers. The owner also keeps the list of who
+//! may join, blackforge is the only way onto a server, see `docs/gate.md`.
 
 use blackforge_api::servers::{JOIN_ADMIN, Server, ServerMod};
 use blackforge_core::servers::{Needs, ServerInstall, fetch, needs};
@@ -16,7 +16,9 @@ use hilen::{
 use crate::{
     backend, social,
     ui::{
-        busy, colors, names,
+        busy, colors,
+        members_modal::MembersModal,
+        names,
         pill::{self, Pill},
         server_modal::ServerModal,
         style, time, toast,
@@ -54,6 +56,7 @@ pub struct ServersPage {
     title: Label,
     subtitle: Label,
     register: Button,
+    members: Button,
     note: Label,
     table: TableView,
 }
@@ -75,6 +78,18 @@ impl Setup for ServersPage {
             .r(style::PAGE_PAD)
             .size(150, style::BUTTON_H);
         self.register.on_tap(move || self.register());
+
+        // Only an owner has a member list, the button shows with the first own
+        // server.
+        style::ghost(self.members, "Members");
+        self.members.set_hidden(true);
+        self.members
+            .place()
+            .t(28)
+            .r(style::PAGE_PAD + 150.0 + GAP)
+            .size(110, style::BUTTON_H);
+        self.members
+            .on_tap(|| MembersModal::show_modally_with_input((), |()| {}));
 
         style::dim(self.note);
         self.note.set_alignment(TextAlignment::Center);
@@ -145,6 +160,7 @@ impl ServersPage {
 
     fn set_rows(mut self: Weak<Self>, rows: Vec<ServerRow>, admin: bool) {
         self.admin = admin;
+        self.members.set_hidden(!rows.iter().any(|row| row.mine));
         self.note
             .set_text("No server is registered yet. Register yours with the button above.");
         self.note.set_hidden(!rows.is_empty());
