@@ -2,7 +2,7 @@
 //! see `docs/competitive.md`.
 
 use anyhow::{Context, Result};
-use blackforge_api::competitive::{Forbidden, Rules, Tiers, forbidden};
+use blackforge_api::competitive::{Rules, Tiers, forbidden};
 
 const FILE: &str = include_str!("../tiers.toml");
 
@@ -14,13 +14,16 @@ pub fn load() -> Result<Tiers> {
 /// What a server forbids now. A server that is not competitive forbids
 /// nothing, and a game without tiers has nothing to forbid.
 pub fn rules(tiers: &Tiers, game: &str, competitive: bool, dead: &[String]) -> Rules {
-    let forbidden: Vec<Forbidden> = match tiers.games.get(game) {
-        Some(game) if competitive => forbidden(game, dead),
-        _ => Vec::new(),
-    };
-    Rules {
-        competitive,
-        forbidden,
+    match tiers.games.get(game) {
+        Some(game) if competitive => Rules {
+            competitive,
+            forbidden: forbidden(&game.tiers, dead),
+            allowed: game.allow.clone(),
+        },
+        _ => Rules {
+            competitive,
+            ..Rules::default()
+        },
     }
 }
 
@@ -36,10 +39,10 @@ mod tests {
     fn every_tier_is_well_formed() {
         let tiers = load().unwrap();
         let valheim = &tiers.games["valheim"];
-        assert!(!valheim.is_empty());
+        assert!(!valheim.tiers.is_empty());
         let mut keys = HashSet::new();
         let mut items = HashSet::new();
-        for tier in valheim {
+        for tier in &valheim.tiers {
             assert!(
                 tier.key.starts_with("defeated_"),
                 "{} is not a boss key",
@@ -55,16 +58,28 @@ mod tests {
                 assert!(items.insert(item), "{item} sits in two tiers");
             }
         }
+        for item in &valheim.allow {
+            assert!(
+                !items.contains(item),
+                "{item} is both forbidden and allowed"
+            );
+        }
     }
 
     #[test]
     fn only_a_competitive_server_forbids() {
         let tiers = load().unwrap();
         let open = rules(&tiers, "valheim", false, &[]);
-        assert!(!open.competitive && open.forbidden.is_empty());
+        assert!(!open.competitive && open.forbidden.is_empty() && open.allowed.is_empty());
 
         let fresh = rules(&tiers, "valheim", true, &[]);
-        assert!(fresh.forbidden.iter().any(|item| item.item == "CopperOre"));
+        assert!(fresh.forbidden.iter().any(|item| item.item == "DragonTear"));
+        // Anybody can kill a troll, only boss drops and the like are listed.
+        assert!(!fresh.forbidden.iter().any(|item| item.item == "TrollHide"));
+        assert!(fresh.allowed.iter().any(|item| item == "Bread"));
+
+        let late = rules(&tiers, "valheim", true, &["defeated_eikthyr".to_owned()]);
+        assert!(!late.forbidden.iter().any(|item| item.item == "HardAntler"));
 
         let unknown = rules(&tiers, "stardew", true, &[]);
         assert!(unknown.competitive && unknown.forbidden.is_empty());

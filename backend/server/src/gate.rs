@@ -178,12 +178,14 @@ SELECT code FROM made",
     let Rules {
         competitive,
         forbidden,
+        allowed,
     } = tiers::rules(&tiers, &game, competitive, &dead);
     Ok(Json(JoinCode {
         code,
         competitive,
         world,
         forbidden,
+        allowed,
     }))
 }
 

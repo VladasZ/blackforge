@@ -48,6 +48,9 @@ pub struct JoinCode {
     /// The materials the character may not carry, empty unless competitive.
     #[serde(default)]
     pub forbidden: Vec<Forbidden>,
+    /// Items never forbidden, see `competitive::GameTiers::allow`.
+    #[serde(default)]
+    pub allowed: Vec<String>,
 }
 
 /// The body of `POST /api/gate/verify`. The route wants
@@ -103,10 +106,11 @@ mod tests {
                 boss: "The Elder".to_owned(),
                 tier: 1,
             }],
+            allowed: vec!["Bread".to_owned()],
         };
         assert_eq!(
             to_string(&code).unwrap(),
-            r#"{"code":"abc","competitive":true,"world":"-123","forbidden":[{"item":"IronScrap","boss":"The Elder","tier":1}]}"#
+            r#"{"code":"abc","competitive":true,"world":"-123","forbidden":[{"item":"IronScrap","boss":"The Elder","tier":1}],"allowed":["Bread"]}"#
         );
         let old: JoinCode = from_str(r#"{"code":"abc"}"#).unwrap();
         assert!(!old.competitive);

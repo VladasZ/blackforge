@@ -1,113 +1,70 @@
 # The tiers of competitive servers, see docs/competitive.md. Kept by hand.
 #
-# Each tier is a boss in the order of the game, the global key its death sets,
-# and the materials of the biome it unlocks. A player may not bring an item of
-# a tier whose boss the world has not killed. The plugins also forbid every
-# item made from a listed material, through the recipes, smelters, fermenters
-# and cooking stations of the game, so only raw materials, boss drops and
-# trophies are listed. The names are prefab names from the game data, the
-# server plugin logs any name the game does not know.
+# Each tier is a boss in the order of the game and the global key its death
+# sets. `items` lists only what a world cannot give at all before that boss
+# dies: the boss drops, a material only a gated tool, station or piece can get,
+# and trader stock the trader holds back until the boss dies. A troll hide is
+# not listed, anybody can kill a troll. The plugins forbid every item that
+# cannot be made without a listed one, through the recipes, the smelters,
+# fermenters and cooking stations and the build cost of every station. So the
+# artisan table, built from Moder's tear, puts black metal and bread behind
+# Moder by itself.
+#
+# The names are prefab names from the game data of Valheim 1.0.15, the server
+# plugin logs any name the game does not know.
 
-[[games.valheim]]
+[games.valheim]
+# Items a recipe would forbid that also drop from mobs, chests or rocks
+# anybody can reach.
+allow = [
+    "ArrowCarapace", "ArrowCharred", "BloodGoldKey", "BoltCharred", "Bread",
+    "KnifeVoid", "Lantern", "MeadEitrMinor",
+]
+
+[[games.valheim.tiers]]
 key = "defeated_eikthyr"
 boss = "Eikthyr"
-items = [
-    "TrophyEikthyr", "HardAntler",
-    "CopperOre", "Copper", "CopperScrap", "TinOre", "Tin", "BronzeScrap",
-    "FineWood", "SurtlingCore", "TrollHide", "BjornHide", "BjornMeat", "BjornPaw",
-    "Thistle", "Blueberries", "Carrot", "CarrotSeeds",
-    "TrophyForestTroll", "TrophyFrostTroll", "TrophyGreydwarfBrute",
-    "TrophyGreydwarfShaman", "TrophyBjorn", "TrophySkeleton", "TrophySurtling",
-]
+items = ["TrophyEikthyr", "HardAntler"]
 
-[[games.valheim]]
+[[games.valheim.tiers]]
 key = "defeated_gdking"
 boss = "The Elder"
-items = [
-    "TrophyTheElder", "CryptKey", "HealthUpgrade_GDKing",
-    "IronScrap", "IronOre", "Iron", "Ironpit", "Chain",
-    "Ooze", "Bloodbag", "Entrails", "WitheredBone", "ElderBark", "Guck", "Root",
-    "Turnip", "TurnipSeeds",
-    "TrophyAbomination", "TrophyDraugr", "TrophyDraugrElite", "TrophyDraugrFem",
-    "TrophyLeech", "TrophyBlob", "TrophySkeletonPoison", "TrophyWraith",
-]
+# The spice, the vial, the flesh and the stone are trader stock.
+items = ["TrophyTheElder", "CryptKey", "SpiceForests", "BlobVial", "YmirRemains", "Thunderstone"]
 
-[[games.valheim]]
+[[games.valheim.tiers]]
 key = "defeated_bonemass"
 boss = "Bonemass"
-items = [
-    "TrophyBonemass", "Wishbone", "HealthUpgrade_Bonemass",
-    "SilverOre", "Silver", "SilverNecklace", "Obsidian", "Crystal", "FreezeGland",
-    "WolfPelt", "WolfFang", "WolfClaw", "WolfHairBundle", "WolfMeat",
-    "DragonEgg", "PowderedDragonEgg", "Onion", "OnionSeeds", "JuteRed",
-    "TrophyWolf", "TrophyHatchling", "TrophySGolem", "TrophyFenring",
-    "TrophyCultist", "TrophyUlv",
-]
+items = ["TrophyBonemass", "Wishbone"]
 
-[[games.valheim]]
+[[games.valheim.tiers]]
 key = "defeated_dragon"
 boss = "Moder"
+# Yggdrasil wood needs an axe of tier 4, all of them need black metal. Sap
+# needs the sap collector, built from Yggdrasil wood and black metal. The rest
+# is trader stock.
 items = [
-    "TrophyDragonQueen", "DragonTear",
-    "BlackMetalScrap", "BlackMetal", "LoxPelt", "LoxMeat", "Barley", "Flax",
-    "LinenThread", "Needle", "Tar", "Cloudberry", "ChickenMeat", "UndeadBjornRibcage",
-    "TrophyLox", "TrophyGoblin", "TrophyGoblinBrute", "TrophyGoblinShaman",
-    "TrophyDeathsquito", "TrophyGrowth", "TrophyBjornUndead",
+    "TrophyDragonQueen", "DragonTear", "YggdrasilWood", "Sap",
+    "ScytheHandle", "MushroomBzerker", "FragrantBundle", "SpiceMountains",
 ]
 
-[[games.valheim]]
+[[games.valheim.tiers]]
 key = "defeated_goblinking"
 boss = "Yagluth"
-items = [
-    "TrophyGoblinKing", "YagluthDrop",
-    "BlackMarble", "BlackCore", "Sap", "Softtissue", "Eitr", "Carapace", "ScaleHide",
-    "Mandible", "BugMeat", "GiantBloodSack", "RoyalJelly", "Wisp", "JuteBlue",
-    "Bilebag", "HareMeat", "MushroomJotunPuffs", "MushroomMagecap",
-    "DvergrNeedle", "DvergrKeyFragment",
-    "TrophySeeker", "TrophySeekerBrute", "TrophyTick", "TrophyGjall", "TrophyDvergr",
-    "TrophyHare",
-]
+# A wisp comes only from the wisp lure, built from the torn spirit.
+items = ["TrophyGoblinKing", "YagluthDrop", "Wisp", "SpicePlains"]
 
-[[games.valheim]]
+[[games.valheim.tiers]]
 key = "defeated_queen"
 boss = "The Queen"
-items = [
-    "TrophySeekerQueen", "QueenDrop",
-    "FlametalOreNew", "FlametalNew", "FlametalOre", "Flametal",
-    "CharredBone", "CharredCogwheel", "CharcoalResin", "Grausten", "Blackwood",
-    "SulfurStone", "ProustitePowder", "MoltenCore", "BellFragment", "CelestialFeather",
-    "AskHide", "AskBladder", "AsksvinMeat", "MorgenHeart", "MorgenSinew",
-    "VoltureMeat", "BoneMawSerpentMeat", "BonemawSerpentScale", "BonemawSerpentTooth",
-    "GemstoneBlue", "GemstoneGreen", "GemstoneRed",
-    "Vineberry", "VineberrySeeds", "Fiddleheadfern", "MushroomSmokePuff",
-    "TrophyAsksvin", "TrophyMorgen", "TrophyCharredMelee", "TrophyCharredArcher",
-    "TrophyCharredMage", "TrophyFallenValkyrie", "TrophyVolture",
-    "TrophyBonemawSerpent", "TrophyBlob_Lava",
-]
+items = ["TrophySeekerQueen", "QueenDrop", "SpiceMistlands"]
 
-[[games.valheim]]
+[[games.valheim.tiers]]
 key = "defeated_fader"
 boss = "Fader"
-items = [
-    "TrophyFader", "FaderDrop",
-    "GoldOre", "Gold", "Frostwood", "FirConeFrost", "FrostCore", "BarkaBranch",
-    "NornThread", "Leatherstraps", "ElakingHairBundle", "MoleClaws",
-    "OrbFrostFire", "OrbThunderBlood",
-    "MooseHide", "MooseMeat", "MooseSinew", "SealHide", "SealBlubber",
-    "Oat", "OatSeeds", "Kale", "KaleSeeds", "Poteitr", "PoteitrSeeds",
-    "MoldArmorGoldChest", "MoldArmorGoldHelmet", "MoldArmorGoldLegs",
-    "MoldArmorMageChest", "MoldArmorMageHelmet", "MoldArmorMageLegs",
-    "MoldArmormediumChest", "MoldArmorMediumHelmet", "MoldArmorMediumLegs",
-    "MoldAtgeir", "MoldAxe", "MoldAxe2H", "MoldBow", "MoldCrossbow", "MoldFistweapon",
-    "MoldKeys", "MoldKnife", "MoldMace", "MoldMace2H", "MoldShieldBuckler",
-    "MoldShieldRound", "MoldShieldTower", "MoldSmallParts", "MoldSpear",
-    "MoldStafffrostorbs", "MoldStaffOrbofAhri", "MoldStaffspiritcaller",
-    "MoldStaffthunderblood", "MoldSword", "MoldSword2H",
-    "TrophyMoose", "TrophySeal", "TrophyBarka", "TrophyJotunWarrior",
-    "TrophyJotunWitch", "TrophyElaking", "TrophyMole",
-]
+items = ["TrophyFader", "FaderDrop", "SpiceAshlands"]
 
-[[games.valheim]]
+[[games.valheim.tiers]]
 key = "defeated_frozenking_p3"
-boss = "The Frozen King"
-items = ["FrozenKingDrop", "CrownJewel"]
+boss = "Kall Fimbulbringer"
+items = ["FrozenKingDrop", "CrownJewel", "SpiceDeepNorth"]

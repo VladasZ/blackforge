@@ -16,7 +16,17 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tiers {
     /// By the game label of the Thunderstore schema, `valheim` for example.
-    pub games: BTreeMap<String, Vec<Tier>>,
+    pub games: BTreeMap<String, GameTiers>,
+}
+
+/// The tiers of one game.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameTiers {
+    /// Prefab names never forbidden. A recipe may need a forbidden material,
+    /// but the item also drops from mobs, chests or rocks anybody can reach.
+    #[serde(default)]
+    pub allow: Vec<String>,
+    pub tiers: Vec<Tier>,
 }
 
 /// One boss and the materials its kill unlocks, in the order of the game.
@@ -76,6 +86,9 @@ pub struct Rules {
     pub competitive: bool,
     /// Empty unless the server is competitive.
     pub forbidden: Vec<Forbidden>,
+    /// See `GameTiers::allow`, empty unless the server is competitive.
+    #[serde(default)]
+    pub allowed: Vec<String>,
 }
 
 #[cfg(test)]
@@ -131,10 +144,11 @@ mod tests {
         let rules = Rules {
             competitive: true,
             forbidden: forbidden(&tiers(), &["defeated_eikthyr".to_owned()]),
+            allowed: vec!["Bread".to_owned()],
         };
         assert_eq!(
             to_string(&rules).unwrap(),
-            r#"{"competitive":true,"forbidden":[{"item":"IronScrap","boss":"The Elder","tier":1}]}"#
+            r#"{"competitive":true,"forbidden":[{"item":"IronScrap","boss":"The Elder","tier":1}],"allowed":["Bread"]}"#
         );
     }
 }

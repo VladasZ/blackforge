@@ -1,16 +1,17 @@
 # Competitive servers
 
-On a competitive server a player may not bring items from a tier the world has
-not reached. Arkham Asylum is one. A tier is a boss and the biome its death
-unlocks. Before The Elder dies, nobody may bring iron, iron gear, swamp food or
-a Draugr trophy.
+On a competitive server a player may not bring an item the world could not
+give yet. Arkham Asylum is one. Only what is really out of reach counts. A troll
+hide is fine before Eikthyr, anybody can kill a troll. Moder's tear is not, and
+with it everything built at the artisan table, like black metal and bread.
 
 ## What a player sees
 
 1. The player clicks the join button of the server in the Valheim menu.
 2. Character select opens. If the character carries a forbidden item, Start is
    off. A panel right of the character lists every forbidden item with its
-   icon and the boss that frees it.
+   icon and the boss that frees it. A long list scrolls. The check runs as
+   soon as the screen opens and again for every character the player picks.
 3. The player leaves those items in another world, or picks another character.
 
 Items found or made in the competitive world itself are always allowed there,
@@ -20,23 +21,39 @@ see "The world tag" below.
 
 `backend/server/tiers.toml` holds the tiers of each game, kept by hand. A tier
 is the global key the game sets when its boss dies, the name of the boss, and
-the materials of the biome it unlocks. Only raw materials, boss drops and
-trophies are listed. The names are prefab names of the game.
+the items a world cannot give at all before that boss dies:
+
+- the boss drops and the trophy,
+- a material only a gated tool or piece gets, like Yggdrasil wood, which needs
+  an axe of tier 4, all of them made of black metal,
+- trader stock the trader holds back until the boss dies, like the spices of
+  the Bog Witch.
+
+The names are prefab names of the game.
 
 The plugins find everything else by themselves in `assets/shared/Tiers.cs`.
-An item is forbidden when it is made from a forbidden material through a
-recipe, a smelter, a fermenter or a cooking station. So bronze, a bronze sword,
-a bronze idol and cooked lox meat are all caught by the few rows for copper,
-tin and lox meat. An item with several recipes is forbidden only when every
-recipe is. An ingredient needed only for upgrades does not count. An item made
-from materials of several tiers names the latest boss.
+An item is forbidden when it cannot be made without a forbidden item. The walk
+follows the recipes, the smelters, fermenters and cooking stations, and the
+build cost of every station, and of the station that station is built at. An
+item with several recipes is forbidden only when every recipe is. An
+ingredient needed only for upgrades does not count, nor does an upgrade idol.
+An item made from several tiers names the latest boss.
+
+`allow` lists items the walk would forbid that also drop from mobs, chests or
+rocks anybody can reach, like Carapace arrows or bread from chests. They are
+never forbidden.
+
+The list was built from dumps of the game data of version 1.0.15: every
+recipe, station, rock with its tool tier, tree, pickable, chest, mob drop and
+trader item. 1.0 changed a lot. Copper needs no special pickaxe, and bog iron
+is picked up, so metals up to silver are open from the start. After a game
+update the list needs the same review.
 
 The Valheim bosses in order, with their keys: Eikthyr `defeated_eikthyr`,
 The Elder `defeated_gdking`, Bonemass `defeated_bonemass`, Moder
 `defeated_dragon`, Yagluth `defeated_goblinking`, The Queen `defeated_queen`,
-Fader `defeated_fader`, and the Frozen King of the Deep North,
-`defeated_frozenking_p3` for its last phase. The names come from a dump of
-the game data of version 1.0.15.
+Fader `defeated_fader`, and Kall Fimbulbringer of the Deep North,
+`defeated_frozenking_p3` for his last phase.
 
 A change of the file is a backend push, no app release and no server restart.
 The servers ask the backend again every 5 minutes. The server plugin logs any
@@ -84,8 +101,8 @@ check stops honest mistakes and old apps, not a determined cheater.
 - `backend/server/src/tiers.rs` loads `tiers.toml`, a test checks every row.
 - `backend/server/src/gate.rs`: `POST /api/gate/progress` with the gate
   secret. The server sends its name, its world id and its boss keys, the
-  answer is `Rules`. `POST /api/servers/{id}/join` adds `competitive`, `world`
-  and `forbidden` to the code.
+  answer is `Rules`. `POST /api/servers/{id}/join` adds `competitive`, `world`,
+  `forbidden` and `allowed` to the code.
 - Migration `0009` adds `competitive`, `world`, `boss_keys` and `progress_at`
   to `servers`.
 - The Competitive switch of the server form sets the flag, only the admin sees

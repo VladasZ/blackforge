@@ -50,6 +50,7 @@ namespace Blackforge
         {
             public bool competitive { get; set; }
             public List<ForbiddenItem> forbidden { get; set; }
+            public List<string> allowed { get; set; }
         }
 
         // One item of the report, the prefab name and the world tag.
@@ -187,7 +188,7 @@ namespace Blackforge
                     sentKeys = joined;
                     world = body.world;
                     competitive = rules.competitive;
-                    forbidden = Tiers.Expand(rules.forbidden, log.LogWarning);
+                    forbidden = Tiers.Expand(rules.forbidden, rules.allowed, log.LogWarning);
                     failed = false;
                     nextPost = Time.time + ProgressInterval;
                     if (changed)
