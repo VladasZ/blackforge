@@ -20,10 +20,16 @@
 
   <ItemGroup>
     <Reference Include="assembly_valheim" HintPath="$(ValheimManaged)\assembly_valheim.dll" Publicize="true" Private="false" />
+    <Reference Include="assembly_guiutils" HintPath="$(ValheimManaged)\assembly_guiutils.dll" Publicize="true" Private="false" />
     <Reference Include="UnityEngine" HintPath="$(ValheimManaged)\UnityEngine.dll" Private="false" />
     <Reference Include="UnityEngine.CoreModule" HintPath="$(ValheimManaged)\UnityEngine.CoreModule.dll" Private="false" />
     <Reference Include="UnityEngine.UnityWebRequestModule" HintPath="$(ValheimManaged)\UnityEngine.UnityWebRequestModule.dll" Private="false" />
     <Reference Include="Newtonsoft.Json" HintPath="$(ValheimManaged)\Newtonsoft.Json.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The tiers walk, shared with the other plugin. -->
+    <Compile Include="../shared/Tiers.cs" />
   </ItemGroup>
 
 </Project>

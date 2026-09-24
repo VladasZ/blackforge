@@ -151,6 +151,7 @@ mod tests {
             updated: 0,
             created,
             address: address.map(str::to_owned),
+            competitive: false,
         }
     }
 

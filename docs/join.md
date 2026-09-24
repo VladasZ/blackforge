@@ -19,6 +19,8 @@ code from blackforge, see `gate.md`.
   `BepInEx/plugins/blackforge-join` before every start of the Valheim client.
   There is no setting, every Valheim client started from the app gets it. A
   server gets nothing.
+- `assets/join/Competitive.cs` is the client half of competitive servers, the
+  check in character select and the world tags, see `competitive.md`.
 
 The folder is not `BepInEx/plugins/blackforge` on purpose. That one belongs to
 the achievements plugin, and it is removed when that setting is off.
@@ -85,7 +87,8 @@ make join-plugin VALHEIM_MANAGED=/path/to/Valheim/valheim_Data/Managed
 
 The target runs the dotnet SDK in Docker and needs Linux containers. Docker for
 Windows in Windows container mode cannot run it. Then copy the Managed folder to
-a Linux box and build there. A local `dotnet build` in `assets/join` works too,
+a Linux box and build there. The plugin takes `assets/shared/Tiers.cs` too, the target copies it. A local
+`dotnet build` in `assets/join` works too,
 the csproj takes the folder from the `ValheimManaged` property.
 
 Build the app again after a new dll, the Rust side embeds it at compile time.

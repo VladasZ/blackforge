@@ -4,6 +4,7 @@ Read `docs/servers.md` before touching the server list.
 Read `docs/join.md` before touching the join button plugin.
 Read `docs/status.md` before touching the server status plugin.
 Read `docs/gate.md` before touching the join codes, members or the server gate.
+Read `docs/competitive.md` before touching competitive servers or `tiers.toml`.
 
 ## Never release unverified
 

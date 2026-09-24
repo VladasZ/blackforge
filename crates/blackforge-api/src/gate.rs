@@ -13,6 +13,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::competitive::Forbidden;
+
 /// How long a join code lives. The game uses it right after the click.
 pub const CODE_SECONDS: i64 = 120;
 
@@ -31,10 +33,21 @@ pub struct AddMember {
     pub username: String,
 }
 
-/// The answer of `POST /api/servers/{id}/join`.
+/// The answer of `POST /api/servers/{id}/join`. The app hands all of it to
+/// the join plugin, which checks the character before the join.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JoinCode {
     pub code: String,
+    /// See `competitive`. A backend before the field sends none.
+    #[serde(default)]
+    pub competitive: bool,
+    /// The world the server runs now, items found in it carry this tag. None
+    /// until the server reported its progress once.
+    #[serde(default)]
+    pub world: Option<String>,
+    /// The materials the character may not carry, empty unless competitive.
+    #[serde(default)]
+    pub forbidden: Vec<Forbidden>,
 }
 
 /// The body of `POST /api/gate/verify`. The route wants
@@ -54,9 +67,10 @@ pub struct Verified {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::to_string;
+    use serde_json::{from_str, to_string};
 
-    use super::{Verified, Verify};
+    use super::{JoinCode, Verified, Verify};
+    use crate::competitive::Forbidden;
 
     // The server plugin reads and writes these by hand in C#, so the shape is
     // fixed here.
@@ -74,5 +88,28 @@ mod tests {
             username: "vladas".to_owned(),
         };
         assert_eq!(to_string(&verified).unwrap(), r#"{"username":"vladas"}"#);
+    }
+
+    // The join plugin reads this in C#, and a backend before competitive
+    // servers sends only the code.
+    #[test]
+    fn join_code_shape() {
+        let code = JoinCode {
+            code: "abc".to_owned(),
+            competitive: true,
+            world: Some("-123".to_owned()),
+            forbidden: vec![Forbidden {
+                item: "IronScrap".to_owned(),
+                boss: "The Elder".to_owned(),
+                tier: 1,
+            }],
+        };
+        assert_eq!(
+            to_string(&code).unwrap(),
+            r#"{"code":"abc","competitive":true,"world":"-123","forbidden":[{"item":"IronScrap","boss":"The Elder","tier":1}]}"#
+        );
+        let old: JoinCode = from_str(r#"{"code":"abc"}"#).unwrap();
+        assert!(!old.competitive);
+        assert!(old.forbidden.is_empty());
     }
 }

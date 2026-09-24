@@ -8,7 +8,9 @@ Players join a server without a password. Blackforge lets them in, the owner
 keeps the list of who may join, see `gate.md`. A server
 of the join admin can also carry a join address. The app then gives it a join
 button in the Valheim menu, see `join.md`. Any other server carries only the
-mods.
+mods. The admin can also mark a server competitive in the form, see
+`competitive.md`. The flag travels as `competitive` in `Server` and
+`SaveServer`, and no field in a save keeps the stored flag.
 
 ## The parts
 

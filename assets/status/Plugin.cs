@@ -29,7 +29,10 @@ namespace Blackforge
     // BLACKFORGE_STATUS_FILE, the one exact and fast answer to who is on. A
     // file older than a few seconds means the server is not running or not
     // ready, and a reader must treat it as unknown.
-    [BepInPlugin("xyz.vladas.blackforge.status", "Blackforge Server", "2.0.0")]
+    //
+    // A competitive server also checks what every player carries, see
+    // Competitive.cs.
+    [BepInPlugin("xyz.vladas.blackforge.status", "Blackforge Server", "3.0.0")]
     public class StatusPlugin : BaseUnityPlugin
     {
         private const float Interval = 2f;
@@ -87,6 +90,10 @@ namespace Blackforge
                     Method(typeof(ZNet), nameof(ZNet.RPC_PeerInfo)),
                     prefix: new HarmonyMethod(typeof(StatusPlugin), nameof(PeerInfoPrefix)),
                     finalizer: new HarmonyMethod(typeof(StatusPlugin), nameof(PeerInfoFinalizer)));
+                harmony.Patch(
+                    Method(typeof(ZNet), nameof(ZNet.OnNewConnection)),
+                    postfix: new HarmonyMethod(typeof(Competitive), nameof(Competitive.Listen)));
+                Competitive.Init(this, Logger, gateUrl, gateSecret);
             }
             catch (Exception error)
             {
@@ -220,6 +227,7 @@ namespace Blackforge
                 return;
             }
             Forget(net);
+            Competitive.Tick(net);
             if (string.IsNullOrEmpty(path))
             {
                 return;

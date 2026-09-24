@@ -7,6 +7,7 @@ mod routes;
 mod servers;
 mod site;
 mod sync;
+mod tiers;
 
 use std::env;
 
@@ -29,6 +30,7 @@ async fn main() -> Result<()> {
         .unwrap_or(DEFAULT_PORT);
     let database_url = env::var("DATABASE_URL").context("DATABASE_URL required")?;
     let broken = broken::load()?;
+    let tiers = tiers::load()?;
 
     let db = build_db(&database_url).await?;
 
@@ -46,7 +48,7 @@ async fn main() -> Result<()> {
         .merge(routes::routes())
         .merge(sync::routes())
         .merge(servers::routes())
-        .merge(gate::routes())
+        .merge(gate::routes(tiers))
         .merge(broken::routes(broken))
         .merge(site::routes())
         .with_state(db);

@@ -11,7 +11,9 @@ join, and every join is checked live with the backend.
    `http://127.0.0.1:<port>/join/<server id>`. It sends the key the app gave
    the game at start.
 3. The app is signed in with Google. It asks `POST /api/servers/{id}/join` for
-   a one time code and gives it to the plugin.
+   a one time code and gives the whole answer to the plugin as JSON. For a
+   competitive server the answer also holds the forbidden items, see
+   `competitive.md`.
 4. The plugin puts the code into the invite key of the game with
    `ZNet.SetInviteSecretKey`. The game sends that key to the server in its
    handshake. No vanilla code sets that key, so it is free to use.

@@ -41,6 +41,9 @@ pub struct SaveServer {
     /// sends none and must not wipe it. An empty text removes it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub address: Option<String>,
+    /// See `competitive`. No field keeps the stored flag, like the address.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub competitive: Option<bool>,
 }
 
 /// One row of `GET /api/servers`, and the answer of a save.
@@ -61,6 +64,10 @@ pub struct Server {
     /// Set only for a server of `JOIN_ADMIN`, see `SaveServer::address`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub address: Option<String>,
+    /// A player may bring nothing from a tier the server has not reached, see
+    /// `competitive`. A backend before the field sends none.
+    #[serde(default)]
+    pub competitive: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
@@ -160,6 +167,7 @@ mod tests {
             game: "valheim".to_owned(),
             mods: vec![valheim_plus()],
             address: None,
+            competitive: None,
         };
         assert_eq!(validate(&good), Ok(()));
 
@@ -187,11 +195,12 @@ mod tests {
             updated: 1_790_090_031,
             created: 1_790_000_000,
             address: None,
+            competitive: false,
         };
         let json = to_string(&server).unwrap();
         assert_eq!(
             json,
-            r#"{"id":"6d5c","name":"Durka","game":"valheim","owner":"vladas","mods":[{"id":"Grantapher-ValheimPlus_Grantapher_Temporary","version":"10.2.0"}],"updated":1790090031,"created":1790000000}"#
+            r#"{"id":"6d5c","name":"Durka","game":"valheim","owner":"vladas","mods":[{"id":"Grantapher-ValheimPlus_Grantapher_Temporary","version":"10.2.0"}],"updated":1790090031,"created":1790000000,"competitive":false}"#
         );
         assert_eq!(from_str::<Server>(&json).unwrap(), server);
     }
@@ -217,6 +226,7 @@ mod tests {
             game: "valheim".to_owned(),
             mods: vec![valheim_plus()],
             address: Some("2456".to_owned()),
+            competitive: None,
         };
         assert_eq!(validate(&save), Err(ServerError::BadAddress));
     }
@@ -225,6 +235,12 @@ mod tests {
     fn an_old_save_has_no_address_field() {
         let save: SaveServer = from_str(r#"{"name":"Durka","game":"valheim","mods":[]}"#).unwrap();
         assert_eq!(save.address, None);
+        assert_eq!(save.competitive, None);
+        let old: Server = from_str(
+            r#"{"id":"6d5c","name":"Durka","game":"valheim","owner":"vladas","mods":[],"updated":1}"#,
+        )
+        .unwrap();
+        assert!(!old.competitive);
 
         let server = Server {
             id: "6d5c".to_owned(),
@@ -235,9 +251,10 @@ mod tests {
             updated: 1,
             created: 1,
             address: Some("86.100.76.6:2456".to_owned()),
+            competitive: false,
         };
         let json = to_string(&server).unwrap();
-        assert!(json.ends_with(r#","address":"86.100.76.6:2456"}"#));
+        assert!(json.ends_with(r#","address":"86.100.76.6:2456","competitive":false}"#));
         assert_eq!(from_str::<Server>(&json).unwrap(), server);
     }
 }

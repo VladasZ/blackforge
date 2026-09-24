@@ -1,7 +1,8 @@
 //! The form that registers a game server or edits one of mine: a name and a
 //! switch per mod of my profile. A ticked mod is required at the version my
 //! lock has, so editing after an update moves the server to the new version.
-//! The join admin also gets a field for the join address.
+//! The join admin also gets a field for the join address and the competitive
+//! switch, see `docs/competitive.md`.
 
 use std::collections::HashMap;
 
@@ -24,6 +25,8 @@ use crate::{
 
 const PAD: f32 = 24.0;
 const ROW_HEIGHT: f32 = 44.0;
+/// The competitive switch sits between the table and the bottom row.
+const SWITCH_B: f32 = PAD + 52.0;
 
 #[derive(Clone, Debug)]
 struct PickRow {
@@ -52,6 +55,8 @@ pub struct ServerModal {
     hint: Label,
     name: TextField,
     address: TextField,
+    competitive: Switch,
+    competitive_label: Label,
     note: Label,
     table: TableView,
     cancel: Button,
@@ -74,6 +79,10 @@ impl ModalView<(Option<Server>, bool), bool> for ServerModal {
     fn setup_input(mut self: Weak<Self>, (server, admin): (Option<Server>, bool)) {
         self.admin = admin;
         self.address.set_hidden(!admin);
+        self.competitive.set_hidden(!admin);
+        self.competitive_label.set_hidden(!admin);
+        self.competitive
+            .set_on(server.as_ref().is_some_and(|server| server.competitive));
         if let Some(address) = server.as_ref().and_then(|server| server.address.as_ref()) {
             self.address.set_text(address);
         }
@@ -122,7 +131,20 @@ impl Setup for ServerModal {
             .t(PAD + 124.0)
             .l(PAD)
             .r(PAD)
-            .b(PAD + 48.0);
+            .b(SWITCH_B + 36.0);
+
+        self.competitive.set_hidden(true);
+        self.competitive.place().l(PAD).b(SWITCH_B).size(44, 24);
+        style::body(self.competitive_label);
+        self.competitive_label.set_hidden(true);
+        self.competitive_label
+            .set_text("Competitive, nobody brings items of a tier this world has not reached");
+        self.competitive_label
+            .place()
+            .l(PAD + 56.0)
+            .r(PAD)
+            .b(SWITCH_B)
+            .h(24);
 
         style::field(self.address, "Join address, like 86.100.76.6:2456");
         self.address.set_hidden(true);
@@ -230,8 +252,8 @@ impl ServerModal {
             Ok(name) => name,
             Err(error) => return toast::error(error.to_string()),
         };
-        // Only the admin sends the field. Without it the backend keeps what is
-        // stored, an empty text removes it.
+        // Only the admin sends the fields. Without them the backend keeps what
+        // is stored, an empty address removes it.
         let address = if self.admin {
             match normalize_address(self.address.text()) {
                 Ok(address) => Some(address.unwrap_or_default()),
@@ -240,6 +262,7 @@ impl ServerModal {
         } else {
             None
         };
+        let competitive = self.admin.then(|| self.competitive.on());
         let save = SaveServer {
             name,
             game: self.game.clone(),
@@ -253,6 +276,7 @@ impl ServerModal {
                 })
                 .collect(),
             address,
+            competitive,
         };
         if let Err(error) = validate(&save) {
             return toast::error(error.to_string());

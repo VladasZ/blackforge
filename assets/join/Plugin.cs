@@ -22,7 +22,7 @@ namespace Blackforge
     // lobby label, so a button finds its PlayFab lobby by the address and the
     // server name. Then it queues a join to that host, the same queue a Steam
     // invite fills, and the game shows character select.
-    [BepInPlugin("xyz.vladas.blackforge.join", "Blackforge Join", "3.0.0")]
+    [BepInPlugin("xyz.vladas.blackforge.join", "Blackforge Join", "4.0.0")]
     public class JoinPlugin : BaseUnityPlugin
     {
         private const string ListFile = "servers.json";
@@ -54,6 +54,12 @@ namespace Blackforge
             public string address;
         }
 
+        // The answer of the app, `JoinCode` of blackforge-api.
+        public class JoinAnswer : Competitive.Ticket
+        {
+            public string code;
+        }
+
         private static BepInEx.Logging.ManualLogSource log;
         private static List<JoinServer> servers = new List<JoinServer>();
         private static JoinPlugin instance;
@@ -69,13 +75,15 @@ namespace Blackforge
             log = Logger;
             instance = this;
             ReadBridge();
+            Harmony harmony = new Harmony(Info.Metadata.GUID);
+            // The tags must hold in every world, also without any server.
+            Competitive.Patch(harmony, log);
             servers = ReadList(Path.Combine(Path.GetDirectoryName(Info.Location), ListFile));
             if (servers.Count == 0)
             {
                 log.LogWarning("servers.json lists no server, no join button is added");
                 return;
             }
-            Harmony harmony = new Harmony(Info.Metadata.GUID);
             harmony.Patch(
                 AccessTools.Method(typeof(FejdStartup), nameof(FejdStartup.SetupGui)),
                 postfix: new HarmonyMethod(typeof(JoinPlugin), nameof(AddButtons)));
@@ -112,7 +120,13 @@ namespace Blackforge
             if (!__instance.IsServer())
             {
                 peer.m_rpc.Register<string>(GateRpc, (rpc, text) => gateMessage = text);
+                Competitive.Listen(peer);
             }
+        }
+
+        private void Update()
+        {
+            Competitive.Tick();
         }
 
         private static void ShowGateMessage(FejdStartup __instance)
@@ -160,6 +174,7 @@ namespace Blackforge
             // Back in the menu, the code of an earlier join must not go to
             // another server.
             ZNet.SetInviteSecretKey("");
+            Competitive.Forget();
             // The menu entries are bare text, the character select Start button
             // has a frame, so that one is the model.
             Button template = __instance.m_csStartButton;
@@ -273,7 +288,24 @@ namespace Blackforge
                     Warn(server, string.IsNullOrEmpty(text) ? AppClosed : text);
                     yield break;
                 }
-                ZNet.SetInviteSecretKey(text);
+                JoinAnswer answer;
+                try
+                {
+                    answer = JsonConvert.DeserializeObject<JoinAnswer>(text);
+                }
+                catch (Exception error)
+                {
+                    log.LogWarning($"the app answered no join for {server.name}: {error.Message}");
+                    Warn(server, AppClosed);
+                    yield break;
+                }
+                if (string.IsNullOrEmpty(answer?.code))
+                {
+                    Warn(server, AppClosed);
+                    yield break;
+                }
+                ZNet.SetInviteSecretKey(answer.code);
+                Competitive.Expect(server.name, answer);
             }
             FindAndJoin(server);
         }
@@ -310,6 +342,7 @@ namespace Blackforge
         {
             log.LogInfo($"no lobby for {server.name} at {server.address}: {reason}");
             ZNet.SetInviteSecretKey("");
+            Competitive.Forget();
             Warn(server, server.name + " is not online");
         }
 

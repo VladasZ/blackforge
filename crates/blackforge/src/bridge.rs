@@ -94,8 +94,8 @@ fn key_matches(request: &Request) -> bool {
         .is_some_and(|header| constant_time_eq(header.value.as_bytes(), key.as_bytes()))
 }
 
-/// The status and the text the plugin shows. A code comes back as the whole
-/// body of a 200.
+/// The status and the text the plugin shows. A 200 carries the `JoinCode` of
+/// the backend as JSON.
 async fn answer(request: &Request) -> (u16, String) {
     if request.method() != &Method::Post {
         return (405, "only POST".to_owned());
@@ -117,7 +117,15 @@ async fn answer(request: &Request) -> (u16, String) {
         }
     };
     match client.join_code(server_id).await {
-        Ok(join) => (200, join.code),
+        // The plugin needs the rules of a competitive server too, it checks
+        // the character before the join.
+        Ok(join) => match serde_json::to_string(&join) {
+            Ok(text) => (200, text),
+            Err(error) => {
+                log::error!("the join code did not serialize: {error}");
+                (500, UNREACHABLE.to_owned())
+            }
+        },
         Err(Error::NotSignedIn) => (401, SIGN_IN.to_owned()),
         Err(Error::Server(words)) => (403, words),
         Err(error) => {

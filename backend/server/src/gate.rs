@@ -6,7 +6,10 @@
 
 use std::{env, sync::Arc};
 
-use blackforge_api::gate::{AddMember, CODE_SECONDS, JoinCode, Member, Verified, Verify};
+use blackforge_api::{
+    competitive::{Progress, Rules, Tiers},
+    gate::{AddMember, CODE_SECONDS, JoinCode, Member, Verified, Verify},
+};
 use constant_time_eq::constant_time_eq;
 use hilen_server::tracing::{info, warn};
 use hilen_server::{
@@ -21,14 +24,17 @@ use hilen_server::{
 };
 use sqlx::{PgPool, types::Uuid};
 
-use crate::routes::{require_admin, require_username, user_named};
+use crate::{
+    routes::{require_admin, require_username, user_named},
+    tiers,
+};
 
 /// The shared secret of the game servers, from `BLACKFORGE_GATE_SECRET`.
 /// Without it no code is ever traded and nobody gets onto a server.
 #[derive(Clone)]
 struct GateSecret(Option<Arc<str>>);
 
-pub fn routes() -> Router<PgPool> {
+pub fn routes(tiers: Tiers) -> Router<PgPool> {
     let secret = env::var("BLACKFORGE_GATE_SECRET")
         .ok()
         .filter(|secret| !secret.is_empty())
@@ -41,7 +47,9 @@ pub fn routes() -> Router<PgPool> {
         .route("/api/members/{username}", delete(remove_member))
         .route("/api/servers/{id}/join", post(join))
         .route("/api/gate/verify", post(verify))
+        .route("/api/gate/progress", post(progress))
         .layer(Extension(GateSecret(secret)))
+        .layer(Extension(Arc::new(tiers)))
 }
 
 async fn member_list(db: &PgPool, owner: Uuid) -> Result<Vec<Member>, AppError> {
@@ -111,8 +119,12 @@ WHERE c.server_id = s.id AND s.owner_id = $1 AND c.user_id = $2",
     Ok(Json(member_list(&db, user.id).await?))
 }
 
+/// The server row a join needs besides the check.
+type JoinRow = (String, String, String, bool, Option<String>, Vec<String>);
+
 async fn join(
     user: User,
+    Extension(tiers): Extension<Arc<Tiers>>,
     State(db): State<PgPool>,
     Path(id): Path<String>,
 ) -> Result<Json<JoinCode>, AppError> {
@@ -120,8 +132,9 @@ async fn join(
     let id = Uuid::parse_str(&id).map_err(|_| AppError::NotFound)?;
     // The owner of the server or a member of the owner's list. The trade of
     // the code runs the same check again.
-    let allowed: Option<(String, String)> = sqlx::query_as(
-        r"SELECT s.name, p.username FROM servers s JOIN profiles p ON p.user_id = s.owner_id
+    let allowed: Option<JoinRow> = sqlx::query_as(
+        r"SELECT s.name, p.username, s.game, s.competitive, s.world, s.boss_keys
+FROM servers s JOIN profiles p ON p.user_id = s.owner_id
 WHERE s.id = $1 AND (s.owner_id = $2 OR EXISTS (
     SELECT 1 FROM server_members m WHERE m.owner_id = s.owner_id AND m.member_id = $2))",
     )
@@ -129,7 +142,7 @@ WHERE s.id = $1 AND (s.owner_id = $2 OR EXISTS (
     .bind(user.id)
     .fetch_optional(&db)
     .await?;
-    let Some((name, owner)) = allowed else {
+    let Some((name, owner, game, competitive, world, dead)) = allowed else {
         let exists: Option<(String, String)> = sqlx::query_as(
             r"SELECT s.name, p.username FROM servers s JOIN profiles p ON p.user_id = s.owner_id
 WHERE s.id = $1",
@@ -162,7 +175,16 @@ SELECT code FROM made",
     .bind(CODE_SECONDS)
     .fetch_one(&db)
     .await?;
-    Ok(Json(JoinCode { code }))
+    let Rules {
+        competitive,
+        forbidden,
+    } = tiers::rules(&tiers, &game, competitive, &dead);
+    Ok(Json(JoinCode {
+        code,
+        competitive,
+        world,
+        forbidden,
+    }))
 }
 
 fn bearer(headers: &HeaderMap) -> Option<&str> {
@@ -173,19 +195,49 @@ fn bearer(headers: &HeaderMap) -> Option<&str> {
         .strip_prefix("Bearer ")
 }
 
+/// Only a game server knows the secret.
+fn check_secret(secret: &GateSecret, headers: &HeaderMap) -> Result<(), AppError> {
+    let Some(secret) = &secret.0 else {
+        return Err(AppError::Forbidden);
+    };
+    let given = bearer(headers).ok_or(AppError::Unauthorized)?;
+    if !constant_time_eq(given.as_bytes(), secret.as_bytes()) {
+        return Err(AppError::Unauthorized);
+    }
+    Ok(())
+}
+
+/// A game server tells its world and its dead bosses, and learns what it
+/// forbids. It sends this at the world load, after a boss dies, and every few
+/// minutes, so a change of the flag or the tiers reaches it without a restart.
+async fn progress(
+    Extension(secret): Extension<GateSecret>,
+    Extension(tiers): Extension<Arc<Tiers>>,
+    State(db): State<PgPool>,
+    headers: HeaderMap,
+    Json(body): Json<Progress>,
+) -> Result<Json<Rules>, AppError> {
+    check_secret(&secret, &headers)?;
+    let row: Option<(String, bool)> = sqlx::query_as(
+        r"UPDATE servers SET world = $2, boss_keys = $3, progress_at = now()
+WHERE name = $1 RETURNING game, competitive",
+    )
+    .bind(&body.server)
+    .bind(&body.world)
+    .bind(&body.keys)
+    .fetch_optional(&db)
+    .await?;
+    let (game, competitive) = row.ok_or(AppError::NotFound)?;
+    Ok(Json(tiers::rules(&tiers, &game, competitive, &body.keys)))
+}
+
 async fn verify(
     Extension(secret): Extension<GateSecret>,
     State(db): State<PgPool>,
     headers: HeaderMap,
     Json(body): Json<Verify>,
 ) -> Result<Json<Verified>, AppError> {
-    let Some(secret) = secret.0 else {
-        return Err(AppError::Forbidden);
-    };
-    let given = bearer(&headers).ok_or(AppError::Unauthorized)?;
-    if !constant_time_eq(given.as_bytes(), secret.as_bytes()) {
-        return Err(AppError::Unauthorized);
-    }
+    check_secret(&secret, &headers)?;
     // The delete runs whatever the checks after it say, a code is used up by
     // its first try.
     let row: Option<(String,)> = sqlx::query_as(
@@ -220,7 +272,10 @@ mod tests {
     use tokio::{net::TcpListener, spawn, sync::oneshot};
 
     use super::routes;
-    use blackforge_api::gate::Verify;
+    use blackforge_api::{
+        competitive::{Progress, Tiers},
+        gate::Verify,
+    };
 
     #[tokio::test]
     /// The member routes want a login, the trade of a code wants the gate
@@ -231,7 +286,7 @@ mod tests {
         let address = listener.local_addr()?;
         let (stop, stopped) = oneshot::channel();
         let server = spawn(async move {
-            serve(listener, routes().with_state(db))
+            serve(listener, routes(Tiers::default()).with_state(db))
                 .with_graceful_shutdown(async {
                     stopped.await.expect("test sends shutdown");
                 })
@@ -269,6 +324,18 @@ mod tests {
             .status();
         // No secret in the test env, so the route refuses before any check.
         assert_eq!(verify, StatusCode::FORBIDDEN);
+        let progress = client
+            .post(format!("{base}/api/gate/progress"))
+            .header("Authorization", "Bearer wrong")
+            .json(&Progress {
+                server: "Arkham Asylum".to_owned(),
+                world: "1".to_owned(),
+                keys: Vec::new(),
+            })
+            .send()
+            .await?
+            .status();
+        assert_eq!(progress, StatusCode::FORBIDDEN);
         stop.send(()).expect("server is alive");
         server.await??;
         Ok(())

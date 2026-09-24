@@ -35,23 +35,24 @@ type Row = (
     i64,
     i64,
     Option<String>,
+    bool,
 );
 
 // The two reads spell the columns out twice, sqlx takes only a literal query.
 const LIST: &str = r"
 SELECT s.id, s.name, s.game, p.username, s.mods, EXTRACT(EPOCH FROM s.updated_at)::bigint,
-    EXTRACT(EPOCH FROM s.created_at)::bigint, s.address
+    EXTRACT(EPOCH FROM s.created_at)::bigint, s.address, s.competitive
 FROM servers s JOIN profiles p ON p.user_id = s.owner_id
 ORDER BY lower(s.name), s.created_at";
 
 const ONE: &str = r"
 SELECT s.id, s.name, s.game, p.username, s.mods, EXTRACT(EPOCH FROM s.updated_at)::bigint,
-    EXTRACT(EPOCH FROM s.created_at)::bigint, s.address
+    EXTRACT(EPOCH FROM s.created_at)::bigint, s.address, s.competitive
 FROM servers s JOIN profiles p ON p.user_id = s.owner_id
 WHERE s.id = $1";
 
 fn server_of(row: Row) -> Result<Server, AppError> {
-    let (id, name, game, owner, mods, updated, created, address) = row;
+    let (id, name, game, owner, mods, updated, created, address, competitive) = row;
     let mods: Vec<ServerMod> = from_str(&mods).map_err(|error| AppError::Internal(error.into()))?;
     Ok(Server {
         id: id.to_string(),
@@ -62,6 +63,7 @@ fn server_of(row: Row) -> Result<Server, AppError> {
         updated,
         created,
         address,
+        competitive,
     })
 }
 
@@ -93,6 +95,8 @@ struct Checked {
     game: String,
     mods: String,
     address: AddressChange,
+    /// None keeps the stored flag, an app before the flag sends none.
+    competitive: Option<bool>,
 }
 
 /// What a save does to the stored join address.
@@ -136,6 +140,7 @@ fn checked(body: &SaveServer) -> Result<Checked, AppError> {
         game: game.to_owned(),
         mods,
         address,
+        competitive: body.competitive,
     })
 }
 
@@ -157,14 +162,15 @@ async fn create(
     require_admin(&db, &user, "registers servers").await?;
     let body = checked(&body)?;
     let (id,): (Uuid,) = sqlx::query_as(
-        r"INSERT INTO servers (owner_id, game, name, mods, address) VALUES ($1, $2, $3, $4, $5)
-RETURNING id",
+        r"INSERT INTO servers (owner_id, game, name, mods, address, competitive)
+VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
     )
     .bind(user.id)
     .bind(&body.game)
     .bind(&body.name)
     .bind(&body.mods)
     .bind(body.address.stored())
+    .bind(body.competitive.unwrap_or(false))
     .fetch_one(&db)
     .await
     .map_err(|error| taken(error, &body.name))?;
@@ -197,7 +203,8 @@ async fn update(
     }
     sqlx::query(
         r"UPDATE servers SET game = $3, mods = $4, updated_at = now(),
-address = CASE WHEN $5 THEN $6 ELSE address END
+address = CASE WHEN $5 THEN $6 ELSE address END,
+competitive = COALESCE($7, competitive)
 WHERE id = $1 AND owner_id = $2",
     )
     .bind(id)
@@ -206,6 +213,7 @@ WHERE id = $1 AND owner_id = $2",
     .bind(&body.mods)
     .bind(body.address.changes())
     .bind(body.address.stored())
+    .bind(body.competitive)
     .execute(&db)
     .await?;
     Ok(Json(one(&db, id).await?))

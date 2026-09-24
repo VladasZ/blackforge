@@ -59,11 +59,18 @@ and achievements plugins there.
 
 ## Changing the plugin
 
-Build it like the join plugin, it compiles against the game dlls:
+Build it like the join plugin, it compiles against the game dlls and takes
+`assets/shared/Tiers.cs` too:
 
 ```sh
-cd assets/status && dotnet build -c Release -p:ValheimManaged=/path/to/valheim_Data/Managed
+make status-plugin VALHEIM_MANAGED=/path/to/Valheim/valheim_Data/Managed
 ```
+
+A local `dotnet build -c Release` in `assets/status` works too.
+
+The plugin also runs the server half of competitive servers, it reports the
+dead bosses to the backend and checks what every player carries, see
+`competitive.md`.
 
 Commit the new dll, then point both composes at the new commit and the new
 sha256. Pushing the composes restarts both servers, so first check that nobody

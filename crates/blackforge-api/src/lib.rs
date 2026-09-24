@@ -6,6 +6,7 @@
 //! read.
 
 pub mod broken;
+pub mod competitive;
 pub mod gate;
 pub mod servers;
 pub mod setup;

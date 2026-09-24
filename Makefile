@@ -27,8 +27,13 @@ plugin:
 	docker run --rm -v "$(CURDIR)/assets/achievements:/src" mcr.microsoft.com/dotnet/sdk:10.0 sh -c \
 		'mkdir /build && cp /src/Plugin.cs /src/BlackforgeAchievements.csproj /build/ && cd /build && dotnet build -c Release -o /out && cp /out/BlackforgeAchievements.dll /src/'
 
-# The join plugin compiles against the game, VALHEIM_MANAGED is the
-# valheim_Data/Managed folder of an installed Valheim.
+# The game plugins compile against the game, VALHEIM_MANAGED is the
+# valheim_Data/Managed folder of an installed Valheim. Both take
+# assets/shared, so the build copies it next to the project.
 join-plugin:
-	docker run --rm -v "$(CURDIR)/assets/join:/src" -v "$(VALHEIM_MANAGED):/managed:ro" mcr.microsoft.com/dotnet/sdk:10.0 sh -c \
-		'mkdir /build && cp /src/Plugin.cs /src/BlackforgeJoin.csproj /build/ && cd /build && dotnet build -c Release -o /out -p:ValheimManaged=/managed && cp /out/BlackforgeJoin.dll /src/'
+	docker run --rm -v "$(CURDIR)/assets:/src" -v "$(VALHEIM_MANAGED):/managed:ro" mcr.microsoft.com/dotnet/sdk:10.0 sh -c \
+		'mkdir -p /build/join && cp -r /src/shared /build/ && cp /src/join/*.cs /src/join/BlackforgeJoin.csproj /build/join/ && cd /build/join && dotnet build -c Release -o /out -p:ValheimManaged=/managed && cp /out/BlackforgeJoin.dll /src/join/'
+
+status-plugin:
+	docker run --rm -v "$(CURDIR)/assets:/src" -v "$(VALHEIM_MANAGED):/managed:ro" mcr.microsoft.com/dotnet/sdk:10.0 sh -c \
+		'mkdir -p /build/status && cp -r /src/shared /build/ && cp /src/status/*.cs /src/status/BlackforgeStatus.csproj /build/status/ && cd /build/status && dotnet build -c Release -o /out -p:ValheimManaged=/managed && cp /out/BlackforgeStatus.dll /src/status/'
