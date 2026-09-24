@@ -20,6 +20,9 @@ pub const CODE_SECONDS: i64 = 120;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Member {
     pub username: String,
+    /// The link to the Google picture. A backend before the field sends none.
+    #[serde(default)]
+    pub picture: Option<String>,
 }
 
 /// The body of `POST /api/members`.

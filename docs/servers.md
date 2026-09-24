@@ -24,7 +24,7 @@ mods.
   a profile with a server, `Forge::install_server` applies the list.
 - `crates/blackforge/src/ui/servers_page.rs` is the page, `server_modal.rs` the
   form that registers or edits a server. `members_modal.rs` is the member list
-  of an owner, the Members button shows once the user owns a server.
+  of the admin.
 
 ## Routes
 
@@ -33,9 +33,9 @@ mods.
   row has the id, the name, the game, the owner's username, the mods, the
   time of the last save, the time of the registration and the join address
   when there is one.
-- `POST /api/servers` registers one. Wants a login and a username.
+- `POST /api/servers` registers one. Only the admin, see below.
 - `PUT /api/servers/{id}` and `DELETE /api/servers/{id}` change or remove an
-  own server. A server of somebody else gets the same 404 as one that does not
+  own server of the admin. A server of somebody else gets the same 404 as one that does not
   exist.
 
 The body of a save is `SaveServer`, the name, the game label, the mods and the
@@ -61,12 +61,13 @@ stored row.
   new versions, a player then sees the install button again.
 - A mod the server lists that left the owner's profile stays on the server
   until the owner switches it off in the form.
+- Only `JOIN_ADMIN` in `crates/blackforge-api/src/servers.rs` registers,
+  changes and removes servers, and only that account gives one a join address.
+  Every player gets a join button for such a server, so a stranger must not add
+  one. Any other account gets `only the admin registers servers` and the like.
 - The window marks a row as mine by comparing the owner's username with
-  `GET /api/me`. Signed out, no row is mine and the register button explains
-  that registering needs an account.
-- Only `JOIN_ADMIN` in `crates/blackforge-api/src/servers.rs` may set a join
-  address, the save of anybody else with an address is refused. The form shows
-  the address field only to that account.
+  `GET /api/me`. The Register and Members buttons show only to the admin, and
+  only after that lookup.
 - The window has no profiles, so a server is registered from the `default`
   profile. The CLI has no server commands.
 

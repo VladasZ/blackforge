@@ -1,4 +1,4 @@
-//! The gate of the game servers. An owner keeps one member list for all of
+//! The gate of the game servers. The admin keeps one member list for all of
 //! their servers, a member asks for a one time join code at the click on a
 //! join button, and the plugin in the game server trades the code for the
 //! username behind it. Only the servers know the gate secret, so only they
@@ -21,7 +21,7 @@ use hilen_server::{
 };
 use sqlx::{PgPool, types::Uuid};
 
-use crate::routes::{require_username, user_named};
+use crate::routes::{require_admin, require_username, user_named};
 
 /// The shared secret of the game servers, from `BLACKFORGE_GATE_SECRET`.
 /// Without it no code is ever traded and nobody gets onto a server.
@@ -45,8 +45,10 @@ pub fn routes() -> Router<PgPool> {
 }
 
 async fn member_list(db: &PgPool, owner: Uuid) -> Result<Vec<Member>, AppError> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        r"SELECT p.username FROM server_members m JOIN profiles p ON p.user_id = m.member_id
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        r"SELECT p.username, u.picture FROM server_members m
+JOIN profiles p ON p.user_id = m.member_id
+JOIN users u ON u.id = m.member_id
 WHERE m.owner_id = $1 ORDER BY lower(p.username)",
     )
     .bind(owner)
@@ -54,11 +56,12 @@ WHERE m.owner_id = $1 ORDER BY lower(p.username)",
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(username,)| Member { username })
+        .map(|(username, picture)| Member { username, picture })
         .collect())
 }
 
 async fn members(user: User, State(db): State<PgPool>) -> Result<Json<Vec<Member>>, AppError> {
+    require_admin(&db, &user, "keeps members").await?;
     Ok(Json(member_list(&db, user.id).await?))
 }
 
@@ -67,7 +70,7 @@ async fn add_member(
     State(db): State<PgPool>,
     Json(body): Json<AddMember>,
 ) -> Result<Json<Vec<Member>>, AppError> {
-    require_username(&db, &user).await?;
+    require_admin(&db, &user, "adds members").await?;
     let member = user_named(&db, &body.username).await?;
     if member == user.id {
         return Err(AppError::BadRequest(
@@ -89,6 +92,7 @@ async fn remove_member(
     State(db): State<PgPool>,
     Path(username): Path<String>,
 ) -> Result<Json<Vec<Member>>, AppError> {
+    require_admin(&db, &user, "removes members").await?;
     let member = user_named(&db, &username).await?;
     sqlx::query("DELETE FROM server_members WHERE owner_id = $1 AND member_id = $2")
         .bind(user.id)

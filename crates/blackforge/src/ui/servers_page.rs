@@ -1,6 +1,6 @@
 //! Registered game servers, every one with the mods it requires. A player
-//! installs what their profile lacks with one button, an owner registers,
-//! edits or removes their own servers. The owner also keeps the list of who
+//! installs what their profile lacks with one button. Only the admin,
+//! `JOIN_ADMIN`, registers, edits or removes servers and keeps the list of who
 //! may join, blackforge is the only way onto a server, see `docs/gate.md`.
 
 use blackforge_api::servers::{JOIN_ADMIN, Server, ServerMod};
@@ -71,7 +71,10 @@ impl Setup for ServersPage {
             .set_text("The mods a server needs, installed with one click");
         self.subtitle.place().t(56).l(style::PAGE_PAD).size(600, 16);
 
+        // Only the admin registers servers and keeps members, both buttons show
+        // once the page knows who is signed in.
         style::primary(self.register, "Register a server");
+        self.register.set_hidden(true);
         self.register
             .place()
             .t(28)
@@ -79,8 +82,6 @@ impl Setup for ServersPage {
             .size(150, style::BUTTON_H);
         self.register.on_tap(move || self.register());
 
-        // Only an owner has a member list, the button shows with the first own
-        // server.
         style::ghost(self.members, "Members");
         self.members.set_hidden(true);
         self.members
@@ -160,18 +161,15 @@ impl ServersPage {
 
     fn set_rows(mut self: Weak<Self>, rows: Vec<ServerRow>, admin: bool) {
         self.admin = admin;
-        self.members.set_hidden(!rows.iter().any(|row| row.mine));
-        self.note
-            .set_text("No server is registered yet. Register yours with the button above.");
+        self.register.set_hidden(!admin);
+        self.members.set_hidden(!admin);
+        self.note.set_text("No server is registered yet.");
         self.note.set_hidden(!rows.is_empty());
         self.rows = rows;
         self.table.reload_data();
     }
 
     fn register(self: Weak<Self>) {
-        if !social::signed_in() {
-            return toast::info("sign in on the Friends page to register a server");
-        }
         ServerModal::show_modally_with_input((None, self.admin), move |saved| {
             if saved && self.is_ok() {
                 self.refresh();

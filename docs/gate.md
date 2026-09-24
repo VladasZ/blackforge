@@ -41,8 +41,9 @@ no key, and its join buttons say so.
 tables.
 
 - `GET /api/members`, `POST /api/members` and `DELETE /api/members/{username}`
-  are the member list of the signed in owner. One list covers every server of
-  that owner. The owner is always let in and is never on the list.
+  are the member list of the admin, no other account may use them. One list
+  covers every server of the admin. The admin is always let in and is never on
+  the list.
 - `POST /api/servers/{id}/join` gives a code to the owner of the server or a
   member of the owner's list. A code is 2 random uuids. Only its sha256 is
   stored, it lives `CODE_SECONDS`, 2 minutes.
@@ -54,6 +55,16 @@ tables.
 
 Removing a member also deletes that member's open codes, so the next join is
 refused.
+
+## The Members window
+
+`crates/blackforge/src/ui/members_modal.rs`, the Members button of the Servers
+page, shown only to the admin. Its field searches people by the start
+of their username, the same `GET /api/users/search` the Friends page uses. While
+the field holds a search the table shows the people found, each with an Add
+button, or "Already a member". An empty field shows the members, each with a
+Remove button. A member row carries the Google picture, a backend before the
+`picture` field of `Member` sends none and the row shows the first letter.
 
 ## The secrets
 

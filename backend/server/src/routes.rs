@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use blackforge_api::{
     FoundUser, Friend, FriendName, Friends, Me, Relation, SEARCH_LIMIT, Search, SetUsername,
-    SharedProfile, Status, username,
+    SharedProfile, Status, servers::JOIN_ADMIN, username,
 };
 use hilen_server::{
     AppError,
@@ -52,6 +52,15 @@ pub(crate) async fn require_username(db: &PgPool, user: &User) -> Result<(), App
         Some(_) => Ok(()),
         None => Err(AppError::BadRequest("pick a username first".to_owned())),
     }
+}
+
+/// Only the admin registers game servers and keeps who may join them. Every
+/// player gets a join button for those servers, a stranger must not add one.
+pub(crate) async fn require_admin(db: &PgPool, user: &User, action: &str) -> Result<(), AppError> {
+    if username_of(db, user.id).await?.as_deref() == Some(JOIN_ADMIN) {
+        return Ok(());
+    }
+    Err(AppError::BadRequest(format!("only the admin {action}")))
 }
 
 /// The user behind a name somebody typed.

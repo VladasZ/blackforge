@@ -1,9 +1,10 @@
-//! Registered game servers. Anybody reads the whole list, no login needed,
-//! only the owner changes a row. A change of a server that is not mine gets the
-//! same 404 as one that does not exist. Only `JOIN_ADMIN` sets a join address.
+//! Registered game servers. Anybody reads the whole list, no login needed.
+//! Only the admin, `JOIN_ADMIN`, registers, changes or removes one, since every
+//! player gets a join button for those servers. A change of a server that is
+//! not mine gets the same 404 as one that does not exist.
 
 use blackforge_api::servers::{
-    JOIN_ADMIN, SaveServer, Server, ServerMod, normalize_address, normalize_name, validate,
+    SaveServer, Server, ServerMod, normalize_address, normalize_name, validate,
 };
 use hilen_server::{
     AppError,
@@ -17,7 +18,7 @@ use hilen_server::{
 use serde_json::{from_str, to_string};
 use sqlx::{PgPool, types::Uuid};
 
-use crate::routes::{require_username, username_of};
+use crate::routes::require_admin;
 
 pub fn routes() -> Router<PgPool> {
     Router::new()
@@ -138,20 +139,6 @@ fn checked(body: &SaveServer) -> Result<Checked, AppError> {
     })
 }
 
-/// A join address puts a button in every player's game menu, so only the
-/// join admin sets one.
-async fn allow_address(db: &PgPool, user: &User, body: &Checked) -> Result<(), AppError> {
-    if body.address.stored().is_none() {
-        return Ok(());
-    }
-    if username_of(db, user.id).await?.as_deref() == Some(JOIN_ADMIN) {
-        return Ok(());
-    }
-    Err(AppError::BadRequest(
-        "only the join admin gives a server a join address".to_owned(),
-    ))
-}
-
 /// A name belongs to one server of a game, a pin names its server.
 fn taken(error: sqlx::Error, name: &str) -> AppError {
     match &error {
@@ -167,9 +154,8 @@ async fn create(
     State(db): State<PgPool>,
     Json(body): Json<SaveServer>,
 ) -> Result<Json<Server>, AppError> {
-    require_username(&db, &user).await?;
+    require_admin(&db, &user, "registers servers").await?;
     let body = checked(&body)?;
-    allow_address(&db, &user, &body).await?;
     let (id,): (Uuid,) = sqlx::query_as(
         r"INSERT INTO servers (owner_id, game, name, mods, address) VALUES ($1, $2, $3, $4, $5)
 RETURNING id",
@@ -191,9 +177,9 @@ async fn update(
     Path(id): Path<String>,
     Json(body): Json<SaveServer>,
 ) -> Result<Json<Server>, AppError> {
+    require_admin(&db, &user, "changes servers").await?;
     let id = server_id(&id)?;
     let body = checked(&body)?;
-    allow_address(&db, &user, &body).await?;
     let current: Option<(String,)> =
         sqlx::query_as("SELECT name FROM servers WHERE id = $1 AND owner_id = $2")
             .bind(id)
@@ -230,6 +216,7 @@ async fn delete(
     State(db): State<PgPool>,
     Path(id): Path<String>,
 ) -> Result<(), AppError> {
+    require_admin(&db, &user, "removes servers").await?;
     let id = server_id(&id)?;
     let done = sqlx::query("DELETE FROM servers WHERE id = $1 AND owner_id = $2")
         .bind(id)

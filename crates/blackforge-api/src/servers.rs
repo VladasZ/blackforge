@@ -16,8 +16,9 @@ use thiserror::Error;
 pub const NAME_MAX: usize = 40;
 /// More mods than any real server list, a guard against a runaway upload.
 pub const MODS_MAX: usize = 200;
-/// The one account that may give a server a join address. Every player gets a
-/// button for such a server in the game menu, so a stranger must not add one.
+/// The one account that registers game servers, gives them a join address and
+/// keeps who may join them. Every player gets a button for such a server in the
+/// game menu, so a stranger must not add one.
 /// A username is fixed once it is set, so it cannot be taken over.
 pub const JOIN_ADMIN: &str = "vladas";
 
