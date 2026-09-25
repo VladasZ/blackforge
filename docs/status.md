@@ -54,8 +54,8 @@ then names the reason. A gate that is off must never run.
   `valheim_player_online` come from it, else from the log lines as before.
   `valheim_status_age_seconds` is its age, -1 when it is missing.
 
-The plugin is never installed on a game client. The app installs only the join
-and achievements plugins there.
+The plugin is never installed on a game client. The app installs only the join,
+no ravens and achievements plugins there.
 
 ## Changing the plugin
 

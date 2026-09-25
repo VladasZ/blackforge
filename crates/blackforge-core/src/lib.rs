@@ -15,6 +15,7 @@ pub mod fix;
 pub mod forge;
 pub mod game;
 pub mod http;
+pub mod hugin;
 pub mod ident;
 pub mod install;
 pub mod join;

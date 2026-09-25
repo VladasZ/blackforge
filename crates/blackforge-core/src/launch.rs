@@ -19,7 +19,7 @@ use crate::{
     achievements,
     error::{Error, IoContext, Result},
     game::{GameDef, GameInstall, Target},
-    join, steam,
+    hugin, join, steam,
     util::exists,
 };
 
@@ -65,8 +65,9 @@ pub struct LaunchPlan {
     pub game_files: Vec<String>,
     /// Whether the achievements plugin goes into the profile first.
     pub keep_achievements: bool,
-    /// Whether the join button plugin goes into the profile first.
-    pub join_button: bool,
+    /// Whether the Valheim client plugins, the join buttons and the one that
+    /// keeps the tutorial ravens away, go into the profile first.
+    pub client_plugins: bool,
     /// The Steam app has to run before the start, see `steam`.
     pub needs_steam: bool,
 }
@@ -172,7 +173,7 @@ fn windows_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
             DOORSTOP_VERSION.to_owned(),
         ],
         keep_achievements: keeps_achievements(input),
-        join_button: join::applies_to(input.game),
+        client_plugins: join::applies_to(input.game),
         // Steam opens itself, the start goes through it.
         needs_steam: false,
     }
@@ -251,7 +252,7 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
             cwd,
             game_files: Vec::new(),
             keep_achievements: keeps_achievements(input),
-            join_button: join::applies_to(input.game),
+            client_plugins: join::applies_to(input.game),
             needs_steam: steam::needed(input.os, input.game.target),
         };
     }
@@ -262,7 +263,7 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
         cwd,
         game_files: Vec::new(),
         keep_achievements: keeps_achievements(input),
-        join_button: join::applies_to(input.game),
+        client_plugins: join::applies_to(input.game),
         needs_steam: steam::needed(input.os, input.game.target),
     }
 }
@@ -275,9 +276,10 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
 /// `run` switches it on through the command line.
 pub async fn prepare(plan: &LaunchPlan, profile_dir: &Path) -> Result<()> {
     achievements::apply(profile_dir, plan.keep_achievements).await?;
-    if plan.join_button {
+    if plan.client_plugins {
         join::apply(profile_dir).await?;
         join::refresh_list(profile_dir).await?;
+        hugin::apply(profile_dir).await?;
     }
     for name in &plan.game_files {
         let source = profile_dir.join(name);
@@ -403,7 +405,7 @@ mod tests {
         assert!(plan.env.is_empty());
         assert!(plan.game_files.is_empty());
         assert!(plan.keep_achievements);
-        assert!(plan.join_button);
+        assert!(plan.client_plugins);
         assert!(plan.needs_steam);
         Ok(())
     }
@@ -458,7 +460,7 @@ mod tests {
         );
         // A server has no achievements, the setting of the user is dropped.
         assert!(!plan.keep_achievements);
-        assert!(!plan.join_button);
+        assert!(!plan.client_plugins);
         Ok(())
     }
 
