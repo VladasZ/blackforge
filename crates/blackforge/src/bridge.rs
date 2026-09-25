@@ -20,6 +20,8 @@ const RULES_PATH: &str = "/rules/";
 const JOIN_PATH: &str = "/join/";
 const SIGN_IN: &str = "Sign in to Blackforge to join";
 const UNREACHABLE: &str = "Blackforge is not reachable, try again later";
+const STARTED_AGAIN: &str = "Blackforge started Valheim again after this game opened, so this game cannot join. Close Valheim and press Play in Blackforge.";
+const APP_RESTARTED: &str = "Blackforge was restarted after this game opened, so this game cannot join. Close Valheim and press Play in Blackforge.";
 
 /// The port of the door, it opens at the first start of the game.
 static PORT: Mutex<Option<u16>> = Mutex::new(None);
@@ -74,18 +76,25 @@ fn serve(server: &Server) {
     }
 }
 
-fn key_matches(request: &Request) -> bool {
+/// Why a key is refused, in words the player can act on. None lets the
+/// request in.
+fn key_refusal(request: &Request) -> Option<&'static str> {
     let Ok(key) = KEY.lock() else {
-        return false;
+        return Some(UNREACHABLE);
     };
+    // No key means this run of the app never started the game.
     let Some(key) = key.as_deref() else {
-        return false;
+        return Some(APP_RESTARTED);
     };
-    request
+    // The plugin only asks with the key from its start arguments, so a wrong
+    // one is from an older start. Steam does not start a second Valheim, the
+    // running game keeps the old key.
+    let matches = request
         .headers()
         .iter()
         .find(|header| header.field.equiv(KEY_HEADER))
-        .is_some_and(|header| constant_time_eq(header.value.as_bytes(), key.as_bytes()))
+        .is_some_and(|header| constant_time_eq(header.value.as_bytes(), key.as_bytes()));
+    (!matches).then_some(STARTED_AGAIN)
 }
 
 /// What the plugin asks for.
@@ -110,8 +119,8 @@ async fn answer(request: &Request) -> (u16, String) {
     } else {
         return (404, "no such door".to_owned());
     };
-    if !key_matches(request) {
-        return (403, "This game was not started by Blackforge".to_owned());
+    if let Some(refusal) = key_refusal(request) {
+        return (403, refusal.to_owned());
     }
     if !social::signed_in() {
         return (401, SIGN_IN.to_owned());

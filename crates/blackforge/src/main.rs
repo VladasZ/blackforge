@@ -8,6 +8,7 @@ mod assets;
 mod backend;
 mod bridge;
 mod cloud;
+mod game_process;
 mod icons;
 mod launcher;
 mod social;

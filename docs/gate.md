@@ -29,6 +29,15 @@ The server plugin sends its reason for a refusal in the `BlackforgeGate` rpc
 before the game's own error. The join plugin shows that text in place of the
 game's error text.
 
+A join right after a drop fails in a way the other mods explain badly. The
+server keeps a dropped connection for 90 seconds in case the player comes
+back, and a new join inside that time hooks onto the dead connection and
+starts the 90 seconds again. The server's answers go down the dead
+connection, so Conditional Config Sync on the client says "No version
+handshake was received from the server" in tiny text. For a join through a
+button the plugin puts one short line in place of it, that the server still
+holds the last connection and to wait 2 minutes.
+
 ## The local connection
 
 `crates/blackforge/src/bridge.rs` listens on 127.0.0.1 only, on a free port
@@ -37,8 +46,19 @@ new random key. The launch passes both as `-blackforge-bridge <port>
 -blackforge-key <key>`, see `bridge_args` in `crates/blackforge-core/src/join.rs`.
 A request needs the key in `X-Blackforge-Key`, so no other program on the
 machine gets a code. The key stops working at the next start of the game.
-It does not stop when the started process exits, Steam often hands the game
-to a new process at once and the game runs on with the same key.
+
+On Windows the start is `steam.exe -applaunch`, which hands the game to the
+running Steam and exits at once. The app then waits on the game itself, found
+by its program name in `crates/blackforge/src/game_process.rs`, and the
+launch plan names it in `handed_to`. Until the game exits the run button
+stays off, so a second start cannot give a new key to a game that still holds
+the old one. A game that does not show up within 2 minutes counts as not
+started.
+
+A wrong key gets a refusal that says why. A key from an older start means the
+app started Valheim again after this game opened. No key at all in the app
+means the app was restarted after the game opened. Both tell the player to
+close Valheim and press Play in Blackforge.
 
 The app must stay open while the game runs. A game started without the app has
 no key, and its join buttons say so.

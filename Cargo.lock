@@ -592,6 +592,7 @@ dependencies = [
  "log",
  "regex",
  "serde_json",
+ "sysinfo",
  "timeago",
  "tiny_http",
  "tokio",

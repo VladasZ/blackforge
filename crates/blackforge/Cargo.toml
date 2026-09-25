@@ -29,6 +29,7 @@ image = { workspace = true }
 log = { workspace = true }
 regex = { workspace = true }
 serde_json = { workspace = true }
+sysinfo = { workspace = true }
 timeago = { workspace = true }
 tiny_http = { workspace = true }
 tokio = { workspace = true }

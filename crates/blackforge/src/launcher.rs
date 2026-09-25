@@ -27,7 +27,7 @@ use tokio::process::Child;
 use crate::{
     backend, bridge,
     cloud::{self, Launch},
-    social,
+    game_process, social,
     ui::{doctor_page, sidebar, toast},
 };
 
@@ -168,11 +168,12 @@ enum Started {
     Running {
         child: Box<Child>,
         label: String,
+        /// The game program when the start went through Steam, which exits
+        /// long before the game does.
+        game: Option<PathBuf>,
     },
     /// Steam does not know the game, the user has to point at the folder.
-    NotFound {
-        game: String,
-    },
+    NotFound { game: String },
 }
 
 pub fn run_game() {
@@ -278,14 +279,15 @@ fn launch(game_dir: Option<PathBuf>) {
             Ok(Started::Running {
                 child: Box::new(child),
                 label,
+                game: plan.handed_to,
             })
         },
         |result| match result {
-            Ok(Started::Running { child, label }) => {
+            Ok(Started::Running { child, label, game }) => {
                 set_run(Run::Running);
                 toast::success(format!("Started {label}"));
                 social::game_started();
-                wait_for_exit(*child);
+                wait_for_exit(*child, game);
             }
             Ok(Started::NotFound { game }) => {
                 set_run(Run::Idle);
@@ -299,15 +301,22 @@ fn launch(game_dir: Option<PathBuf>) {
     );
 }
 
-fn wait_for_exit(mut child: Child) {
+fn wait_for_exit(mut child: Child, game: Option<PathBuf>) {
     spawn(async move {
-        // The key stays. Steam often hands the game to a new process, so the
-        // child exits at once while the game runs on and still needs its key.
-        // The next start replaces the key.
         let status = child.wait().await;
+        // Steam exits at once and the game runs on. Until the game itself
+        // exits, the run button stays off, friends see it in game, and a
+        // second start cannot replace the key the game holds.
+        let started = match (&status, game) {
+            (Ok(status), Some(game)) if status.success() => game_process::wait(&game).await,
+            _ => true,
+        };
         on_main(move || {
             set_run(Run::Idle);
             social::game_exited();
+            if !started {
+                toast::error("the game did not start through Steam");
+            }
             match status {
                 Ok(status) if status.success() => log::info!("the game exited with {status}"),
                 Ok(status) => toast::error(format!("the game exited with {status}")),

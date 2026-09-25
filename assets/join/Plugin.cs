@@ -45,6 +45,14 @@ namespace Blackforge
         private const string GateRpc = "BlackforgeGate";
         private const string NotFromApp = "Start Valheim from Blackforge to join this server.";
         private const string AppClosed = "Blackforge is not running. Keep it open while you play, it lets you in.";
+        // Conditional Config Sync writes this when the server never answered
+        // its mod check. The servers run the same mods, so the real cause is a
+        // join right after a drop. The server still holds the dropped
+        // connection for 90 seconds, a new join restarts that wait, and the
+        // server answers down the dead connection.
+        private const string NoServerHandshake = "No version handshake was received from the server";
+        private const string StuckConnection =
+            "{0} did not answer. It still holds your last connection after a drop. Wait 2 minutes, then join again.";
 
         public class JoinList
         {
@@ -73,6 +81,8 @@ namespace Blackforge
         // The reason the server gave for the last refusal, shown in place of
         // the game's own error text.
         private static string gateMessage;
+        // The server of the last click on a join button.
+        private static JoinServer joining;
 
         private void Awake()
         {
@@ -94,9 +104,10 @@ namespace Blackforge
             harmony.Patch(
                 AccessTools.Method(typeof(ZNet), nameof(ZNet.OnNewConnection)),
                 postfix: new HarmonyMethod(typeof(JoinPlugin), nameof(ListenToGate)));
+            // Last, so the other mods that write into the same error text are done.
             harmony.Patch(
                 AccessTools.Method(typeof(FejdStartup), nameof(FejdStartup.ShowConnectError)),
-                postfix: new HarmonyMethod(typeof(JoinPlugin), nameof(ShowGateMessage)));
+                postfix: new HarmonyMethod(typeof(JoinPlugin), nameof(ShowGateMessage)) { priority = Priority.Last });
         }
 
         private static void ReadBridge()
@@ -135,11 +146,26 @@ namespace Blackforge
 
         private static void ShowGateMessage(FejdStartup __instance)
         {
-            if (gateMessage != null)
+            TMP_Text error = __instance.m_connectionFailedError;
+            string text = gateMessage;
+            gateMessage = null;
+            if (text == null && joining != null && error.text.Contains(NoServerHandshake))
             {
-                __instance.m_connectionFailedError.text = gateMessage;
-                gateMessage = null;
+                log.LogInfo($"{joining.name} sent no mod check answer, its old connection of this player is still open");
+                text = string.Format(StuckConnection, joining.name);
             }
+            if (text != null)
+            {
+                error.text = text;
+                // A mod without a priority can still write after this postfix.
+                instance.StartCoroutine(KeepText(error, text));
+            }
+        }
+
+        private static IEnumerator KeepText(TMP_Text error, string text)
+        {
+            yield return null;
+            error.text = text;
         }
 
         private static List<JoinServer> ReadList(string path)
@@ -262,6 +288,7 @@ namespace Blackforge
             {
                 return;
             }
+            joining = server;
             // The click gets only the member check and the rules. The code
             // comes at Start in character select, see Competitive.HoldStart,
             // since a code lives only two minutes.

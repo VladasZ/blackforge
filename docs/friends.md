@@ -87,7 +87,8 @@ sees the email or the Google name. The privacy page promises that.
   looks like a secret stays local: a key with `password`, `token`, `secret`, `webhook` or
   `apikey`, or a value that is a web address.
 - In game means the app started the game. It reports at the start, once a minute, and at
-  the exit. The server reads 2 minutes of silence as not in game.
+  the exit. On Windows the exit is the one of the game itself, not of `steam.exe`,
+  see `gate.md`. The server reads 2 minutes of silence as not in game.
 - The list of a friend shows the mods they asked for, dependencies left out. A
   friend's mod is added the way Browse adds one, the newest version with what it
   needs. There is no install of a whole list.

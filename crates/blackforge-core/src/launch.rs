@@ -70,6 +70,9 @@ pub struct LaunchPlan {
     pub client_plugins: bool,
     /// The Steam app has to run before the start, see `steam`.
     pub needs_steam: bool,
+    /// The game program when the started process only hands the start on
+    /// and exits long before the game does.
+    pub handed_to: Option<PathBuf>,
 }
 
 pub fn preloader_path(profile_dir: &Path) -> PathBuf {
@@ -152,8 +155,10 @@ fn windows_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
         .steam_dir
         .as_ref()
         .filter(|_| input.game.target == Target::Client);
+    let mut handed_to = None;
     let program = match (steam, input.game.steam_app_id) {
         (Some(steam), Some(app_id)) => {
+            handed_to = Some(input.install.executable.clone());
             args.push("-applaunch".to_owned());
             args.push(app_id.to_string());
             steam.join("steam.exe")
@@ -176,6 +181,7 @@ fn windows_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
         client_plugins: join::applies_to(input.game),
         // Steam opens itself, the start goes through it.
         needs_steam: false,
+        handed_to,
     }
 }
 
@@ -254,6 +260,7 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
             keep_achievements: keeps_achievements(input),
             client_plugins: join::applies_to(input.game),
             needs_steam: steam::needed(input.os, input.game.target),
+            handed_to: None,
         };
     }
     LaunchPlan {
@@ -265,6 +272,7 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
         keep_achievements: keeps_achievements(input),
         client_plugins: join::applies_to(input.game),
         needs_steam: steam::needed(input.os, input.game.target),
+        handed_to: None,
     }
 }
 
@@ -501,6 +509,7 @@ mod tests {
             &[],
         ))?;
         assert_eq!(plan.program, PathBuf::from("C:/Steam/steam.exe"));
+        assert_eq!(plan.handed_to, Some(install.executable.clone()));
         assert_eq!(
             plan.args[..4],
             ["-applaunch", "892970", "--doorstop-enabled", "true"]
@@ -530,6 +539,7 @@ mod tests {
             &[],
         ))?;
         assert_eq!(plan.program, PathBuf::from("C:/server/valheim_server.exe"));
+        assert_eq!(plan.handed_to, None);
         assert_eq!(plan.args[0], "--doorstop-enabled");
         Ok(())
     }
