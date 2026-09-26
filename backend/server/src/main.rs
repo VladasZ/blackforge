@@ -3,6 +3,7 @@
 
 mod broken;
 mod gate;
+mod reports;
 mod routes;
 mod servers;
 mod site;
@@ -49,6 +50,7 @@ async fn main() -> Result<()> {
         .merge(sync::routes())
         .merge(servers::routes())
         .merge(gate::routes(tiers))
+        .merge(reports::routes())
         .merge(broken::routes(broken))
         .merge(site::routes())
         .with_state(db);

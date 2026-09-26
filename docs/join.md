@@ -21,6 +21,8 @@ and the server lets in only a code from blackforge, see `gate.md`.
   server gets nothing.
 - `assets/join/Competitive.cs` is the client half of competitive servers, the
   check in character select and the world tags, see `competitive.md`.
+- `assets/join/Report.cs` sends a report of every failed join and every
+  dropped connection to the backend, see `reports.md`.
 
 The folder is not `BepInEx/plugins/blackforge` on purpose. That one belongs to
 the achievements plugin, and it is removed when that setting is off.

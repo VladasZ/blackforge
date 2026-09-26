@@ -8,6 +8,7 @@
 pub mod broken;
 pub mod competitive;
 pub mod gate;
+pub mod report;
 pub mod servers;
 pub mod setup;
 pub mod username;

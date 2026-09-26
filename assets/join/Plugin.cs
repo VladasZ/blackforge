@@ -23,7 +23,7 @@ namespace Blackforge
     // port in it is only a lobby label, so a button finds its PlayFab lobby by
     // the address and the server name. Then it queues a join to that host, the
     // same queue a Steam invite fills, and the game shows character select.
-    [BepInPlugin("xyz.vladas.blackforge.join", "Blackforge Join", "4.0.0")]
+    [BepInPlugin("xyz.vladas.blackforge.join", "Blackforge Join", "4.1.0")]
     public class JoinPlugin : BaseUnityPlugin
     {
         private const string ListFile = "servers.json";
@@ -92,6 +92,23 @@ namespace Blackforge
             Harmony harmony = new Harmony(Info.Metadata.GUID);
             // The tags must hold in every world, also without any server.
             Competitive.Patch(harmony, log);
+            // Reports are shipped untested in the game, a failed patch must
+            // not cost the join buttons.
+            try
+            {
+                Report.Patch(harmony, log, Info.Metadata.Version.ToString());
+            }
+            catch (Exception error)
+            {
+                log.LogError($"connection reports are off, a patch failed: {error}");
+            }
+            harmony.Patch(
+                AccessTools.Method(typeof(ZNet), nameof(ZNet.OnNewConnection)),
+                postfix: new HarmonyMethod(typeof(JoinPlugin), nameof(ListenToGate)));
+            // Last, so the other mods that write into the same error text are done.
+            harmony.Patch(
+                AccessTools.Method(typeof(FejdStartup), nameof(FejdStartup.ShowConnectError)),
+                postfix: new HarmonyMethod(typeof(JoinPlugin), nameof(ShowGateMessage)) { priority = Priority.Last });
             servers = ReadList(Path.Combine(Path.GetDirectoryName(Info.Location), ListFile));
             if (servers.Count == 0)
             {
@@ -101,13 +118,6 @@ namespace Blackforge
             harmony.Patch(
                 AccessTools.Method(typeof(FejdStartup), nameof(FejdStartup.SetupGui)),
                 postfix: new HarmonyMethod(typeof(JoinPlugin), nameof(AddButtons)));
-            harmony.Patch(
-                AccessTools.Method(typeof(ZNet), nameof(ZNet.OnNewConnection)),
-                postfix: new HarmonyMethod(typeof(JoinPlugin), nameof(ListenToGate)));
-            // Last, so the other mods that write into the same error text are done.
-            harmony.Patch(
-                AccessTools.Method(typeof(FejdStartup), nameof(FejdStartup.ShowConnectError)),
-                postfix: new HarmonyMethod(typeof(JoinPlugin), nameof(ShowGateMessage)) { priority = Priority.Last });
         }
 
         private static void ReadBridge()
@@ -134,7 +144,12 @@ namespace Blackforge
         {
             if (!__instance.IsServer())
             {
-                peer.m_rpc.Register<string>(GateRpc, (rpc, text) => gateMessage = text);
+                Report.Step($"socket to {peer.m_socket?.GetEndPointString()} is open");
+                peer.m_rpc.Register<string>(GateRpc, (rpc, text) =>
+                {
+                    Report.Step($"the gate says: {text}");
+                    gateMessage = text;
+                });
                 Competitive.Listen(peer);
             }
         }
@@ -142,10 +157,29 @@ namespace Blackforge
         private void Update()
         {
             Competitive.Tick();
+            Report.Tick();
         }
 
-        private static void ShowGateMessage(FejdStartup __instance)
+        public static void Run(IEnumerator routine)
         {
+            instance.StartCoroutine(routine);
+        }
+
+        // The url of a door of the app, null for a game the app did not start.
+        public static string BridgeUrl(string path)
+        {
+            return bridgePort == null ? null : $"http://127.0.0.1:{bridgePort}/{path}";
+        }
+
+        public static void SignRequest(UnityWebRequest request)
+        {
+            request.SetRequestHeader(KeyHeader, bridgeKey ?? "");
+        }
+
+        private static void ShowGateMessage(FejdStartup __instance, ZNet.ConnectionStatus statusOverride)
+        {
+            ZNet.ConnectionStatus status =
+                statusOverride == ZNet.ConnectionStatus.None ? ZNet.GetConnectionStatus() : statusOverride;
             TMP_Text error = __instance.m_connectionFailedError;
             string text = gateMessage;
             gateMessage = null;
@@ -159,6 +193,11 @@ namespace Blackforge
                 error.text = text;
                 // A mod without a priority can still write after this postfix.
                 instance.StartCoroutine(KeepText(error, text));
+            }
+            // The menu runs this at every load, also after a plain logout.
+            if (status > ZNet.ConnectionStatus.Connected)
+            {
+                Report.Failed(joining, status.ToString(), text ?? error.text);
             }
         }
 
@@ -289,6 +328,7 @@ namespace Blackforge
                 return;
             }
             joining = server;
+            Report.Begin(server);
             // The click gets only the member check and the rules. The code
             // comes at Start in character select, see Competitive.HoldStart,
             // since a code lives only two minutes.
@@ -312,6 +352,7 @@ namespace Blackforge
                     return;
                 }
                 ZNet.SetInviteSecretKey(answer.code);
+                Report.Step("got a join code");
                 onCode();
             }, onFail));
         }
@@ -322,12 +363,13 @@ namespace Blackforge
             where T : class
         {
             asking = true;
-            string url = $"http://127.0.0.1:{bridgePort}/{door}/{UnityWebRequest.EscapeURL(server.id)}";
+            string url = BridgeUrl($"{door}/{UnityWebRequest.EscapeURL(server.id)}");
             T answer = null;
+            Report.Step($"ask the app at {door}");
             using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
             {
                 request.downloadHandler = new DownloadHandlerBuffer();
-                request.SetRequestHeader(KeyHeader, bridgeKey);
+                SignRequest(request);
                 request.timeout = AskTimeout;
                 yield return request.SendWebRequest();
                 asking = false;
@@ -335,13 +377,16 @@ namespace Blackforge
                 string text = request.downloadHandler.text;
                 if (request.result == UnityWebRequest.Result.ConnectionError)
                 {
+                    // No report, it would go through the same app.
                     log.LogInfo($"no answer from the app at {door} for {server.name}: {request.error}");
                     Warn(server, AppClosed);
                 }
                 else if (request.responseCode != 200 || string.IsNullOrEmpty(text))
                 {
                     log.LogInfo($"refused at {door} for {server.name}: {request.responseCode} {text}");
-                    Warn(server, string.IsNullOrEmpty(text) ? AppClosed : text);
+                    string shown = string.IsNullOrEmpty(text) ? AppClosed : text;
+                    Warn(server, shown);
+                    Report.Failed(server, $"Refused{request.responseCode}", shown);
                 }
                 else
                 {
@@ -379,6 +424,7 @@ namespace Blackforge
                         NotOnline(server, "the lobby has no host");
                         return;
                     }
+                    Report.Step($"lobby found, host {found.remotePlayerId}");
                     ZSteamMatchmaking.instance.m_joinData =
                         new ServerJoinData(new ServerJoinDataPlayFabUser(found.remotePlayerId));
                 },
@@ -398,6 +444,7 @@ namespace Blackforge
             ZNet.SetInviteSecretKey("");
             Competitive.Forget();
             Warn(server, server.name + " is not online");
+            Report.Failed(server, "NotOnline", reason);
         }
 
         private static void Warn(JoinServer server, string text)

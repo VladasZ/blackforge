@@ -38,6 +38,9 @@ handshake was received from the server" in tiny text. For a join through a
 button the plugin puts one short line in place of it, that the server still
 holds the last connection and to wait 2 minutes.
 
+Every failed join and every drop also sends a report with the game logs to
+the backend, see `reports.md`.
+
 ## The local connection
 
 `crates/blackforge/src/bridge.rs` listens on 127.0.0.1 only, on a free port

@@ -6,6 +6,7 @@ Read `docs/hugin.md` before touching the plugin that keeps the ravens away.
 Read `docs/status.md` before touching the server status plugin.
 Read `docs/gate.md` before touching the join codes, members or the server gate.
 Read `docs/competitive.md` before touching competitive servers or `tiers.toml`.
+Read `docs/reports.md` before touching the connection reports.
 
 ## Never release unverified
 

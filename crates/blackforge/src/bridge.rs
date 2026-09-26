@@ -8,6 +8,7 @@ use std::{sync::Mutex, thread};
 
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use blackforge_api::report::ConnectionReport;
 use blackforge_core::Error;
 use constant_time_eq::constant_time_eq;
 use tiny_http::{Method, Request, Response, Server};
@@ -18,6 +19,7 @@ use crate::social;
 const KEY_HEADER: &str = "X-Blackforge-Key";
 const RULES_PATH: &str = "/rules/";
 const JOIN_PATH: &str = "/join/";
+const REPORT_PATH: &str = "/report";
 const SIGN_IN: &str = "Sign in to Blackforge to join";
 const UNREACHABLE: &str = "Blackforge is not reachable, try again later";
 const STARTED_AGAIN: &str = "Blackforge started Valheim again after this game opened, so this game cannot join. Close Valheim and press Play in Blackforge.";
@@ -67,8 +69,12 @@ fn serve(server: &Server) {
             return;
         }
     };
-    for request in server.incoming_requests() {
-        let (status, text) = runtime.block_on(answer(&request));
+    for mut request in server.incoming_requests() {
+        let (status, text) = if request.url() == REPORT_PATH {
+            report(&mut request)
+        } else {
+            runtime.block_on(answer(&request))
+        };
         let response = Response::from_string(text).with_status_code(status);
         if let Err(error) = request.respond(response) {
             log::warn!("the join bridge did not answer: {error}");
@@ -95,6 +101,68 @@ fn key_refusal(request: &Request) -> Option<&'static str> {
         .find(|header| header.field.equiv(KEY_HEADER))
         .is_some_and(|header| constant_time_eq(header.value.as_bytes(), key.as_bytes()));
     (!matches).then_some(STARTED_AGAIN)
+}
+
+/// A report of a failed join or a dropped connection, see `docs/reports.md`.
+/// It skips the key check, a game with a stale key is one of the failures
+/// worth a report, and a report only ever goes to the account of this app.
+/// It answers at once and sends in the background, so a slow backend never
+/// holds up a join code at the other doors.
+fn report(request: &mut Request) -> (u16, String) {
+    if request.method() != &Method::Post {
+        return (405, "only POST".to_owned());
+    }
+    let mut body = String::new();
+    if let Err(error) = request.as_reader().read_to_string(&mut body) {
+        return (400, format!("no report: {error}"));
+    }
+    let mut report: ConnectionReport = match serde_json::from_str(&body) {
+        Ok(report) => report,
+        Err(error) => return (400, format!("no report: {error}")),
+    };
+    env!("CARGO_PKG_VERSION").clone_into(&mut report.app_version);
+    report.trim();
+    log::info!(
+        "connection report: {} {} after {:.1}s, {}",
+        report.server,
+        report.status,
+        report.seconds,
+        report.message
+    );
+    if !social::signed_in() {
+        log::warn!("the connection report is not sent, nobody is signed in");
+        return (401, SIGN_IN.to_owned());
+    }
+    let client = match social::client() {
+        Ok(client) => client,
+        Err(error) => {
+            log::warn!("no client for the connection report: {error:#}");
+            return (500, UNREACHABLE.to_owned());
+        }
+    };
+    let sent = thread::Builder::new()
+        .name("connection-report".to_owned())
+        .spawn(move || {
+            let result = Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(anyhow::Error::from)
+                .and_then(|runtime| {
+                    runtime
+                        .block_on(client.send_report(&report))
+                        .map_err(anyhow::Error::from)
+                });
+            if let Err(error) = result {
+                log::warn!("the connection report did not reach the server: {error:#}");
+            }
+        });
+    match sent {
+        Ok(_) => (202, "sent".to_owned()),
+        Err(error) => {
+            log::warn!("the connection report did not start: {error}");
+            (500, UNREACHABLE.to_owned())
+        }
+    }
 }
 
 /// What the plugin asks for.

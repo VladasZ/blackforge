@@ -6,6 +6,7 @@ use std::time::Duration;
 use blackforge_api::{
     ApiError, FoundUser, FriendName, Friends, Me, Search, SetUsername, SharedProfile, Status,
     gate::{AddMember, JoinCode, JoinRules, Member},
+    report::ConnectionReport,
     servers::{SaveServer, Server},
     setup::{Account, HistoryRow, Restore, Save, Saved},
 };
@@ -171,6 +172,12 @@ impl SocialClient {
     pub async fn join_code(&self, server_id: &str) -> Result<JoinCode> {
         let path = format!("/api/servers/{server_id}/join");
         self.read(self.request(Method::POST, &path)).await
+    }
+
+    /// What the game saw at a failed join or a dropped connection.
+    pub async fn send_report(&self, report: &ConnectionReport) -> Result<()> {
+        self.send(self.request(Method::POST, "/api/reports").json(report))
+            .await
     }
 
     async fn friend_action(&self, action: &str, username: &str) -> Result<()> {
