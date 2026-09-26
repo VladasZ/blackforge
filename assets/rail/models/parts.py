@@ -58,7 +58,9 @@ def frame(name, length, width):
     for side in (-1, 1):
         box(f"{name}_beam{side}", (0.18, length, 0.2), (side * width / 2, 0, z), "wood", grain="y")
     for end in (-1, 1):
-        box(f"{name}_cross{end}", (width + 0.18, 0.2, 0.2), (0, end * (length / 2 - 0.1), z), "wood")
+        # Between the long beams, not through them: overlapping faces in one
+        # plane flicker in the game.
+        box(f"{name}_cross{end}", (width - 0.18, 0.2, 0.2), (0, end * (length / 2 - 0.1), z), "wood")
 
 
 def coupler(name, y, direction):

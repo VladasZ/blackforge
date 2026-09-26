@@ -367,7 +367,10 @@ namespace Blackforge
             private static void Postfix()
             {
                 Register();
-                new GameObject("BlackforgeRail").AddComponent<Simulation>();
+                GameObject simulation = new GameObject("BlackforgeRail");
+                simulation.AddComponent<Simulation>();
+                simulation.AddComponent<RailTrace>();
+                simulation.AddComponent<RailShot>();
             }
         }
     }
@@ -375,12 +378,20 @@ namespace Blackforge
     // Moves every train this machine owns, each frame.
     public class Simulation : MonoBehaviour
     {
+        // Off puts the trains in place in LateUpdate and leaves the rider to
+        // the game, the old way, so the rail test can show both.
+        public static bool SameFrame = true;
+
         private const float Near = 80f;
         private float m_nextTake;
 
         // A client takes over the trains the server moves near its player, so
         // they move every frame for that player and not in network steps. The
         // game gives them back when the player leaves.
+        // Only inside the active area of the player: outside it the game gives
+        // the train back to nobody within 2 seconds, the server takes it
+        // again, and each switch jumps the train back to an older position.
+        // That area can end 32 m from the player.
         private void TakeNearTrains()
         {
             Player player = Player.m_localPlayer;
@@ -390,14 +401,23 @@ namespace Blackforge
             }
             m_nextTake = Time.time + 0.5f;
             long server = Network.Server;
+            Vector3 center = ZNet.instance.GetReferencePosition();
             foreach (ZDO loco in Train.Trains())
             {
-                if (loco.GetOwner() == server && (loco.GetPosition() - player.transform.position).sqrMagnitude < Near * Near)
+                if (loco.GetOwner() == server && (loco.GetPosition() - player.transform.position).sqrMagnitude < Near * Near
+                    && ZNetScene.InActiveArea(loco.GetPosition(), center))
                 {
                     loco.SetOwner(ZDOMan.GetSessionID());
                 }
             }
         }
+
+        // On, this machine's own trains act like trains of another machine:
+        // their data changes only at uneven times, like updates from the
+        // network, and they are drawn the way a viewer draws them. For the
+        // rail test, which has no second machine.
+        public static bool Remote;
+        private static readonly Dictionary<ZDOID, (float pending, float next)> sends = new Dictionary<ZDOID, (float, float)>();
 
         private void Update()
         {
@@ -411,11 +431,70 @@ namespace Blackforge
             float dt = Time.deltaTime;
             foreach (ZDO loco in Train.Trains())
             {
-                if (loco.IsOwner())
+                if (!loco.IsOwner())
+                {
+                    continue;
+                }
+                if (!Remote)
                 {
                     Train.Step(loco, dt);
+                    continue;
+                }
+                sends.TryGetValue(loco.m_uid, out (float pending, float next) send);
+                send.pending += dt;
+                if (Time.time >= send.next)
+                {
+                    Train.Step(loco, send.pending);
+                    send = (0f, Time.time + Random.Range(0.05f, 0.2f));
+                }
+                sends[loco.m_uid] = send;
+            }
+            if (ZNetScene.instance == null || !SameFrame)
+            {
+                return;
+            }
+            foreach (ZDO loco in Train.Trains())
+            {
+                bool other = !loco.IsOwner() || Remote;
+                if (other && Follow.Enabled && Follow.Step(loco, dt))
+                {
+                    continue;
+                }
+                Follow.Forget(loco.m_uid);
+                Show(loco);
+                foreach (ZDOID wagon in Train.WagonIds(loco))
+                {
+                    Show(ZDOMan.instance.GetZDO(wagon));
                 }
             }
+            SeatRider();
+        }
+
+        private static void Show(ZDO zdo)
+        {
+            ZNetView view = zdo != null ? ZNetScene.instance.FindInstance(zdo) : null;
+            if (view != null)
+            {
+                view.GetComponent<RailBody>()?.Show();
+            }
+        }
+
+        // The game puts a seated player onto the seat in the physics step,
+        // which runs before the train moves in a frame. So the player and the
+        // camera were one frame behind the train, and the train jumped against
+        // the camera whenever the frame time changed, a flicker while riding.
+        // The rider now sits on the seat where the train is this frame.
+        private static void SeatRider()
+        {
+            Player player = Player.m_localPlayer;
+            if (player == null || !player.m_attached || player.m_attachPoint == null || player.m_attachPoint.GetComponentInParent<RailBody>() == null)
+            {
+                return;
+            }
+            Transform seat = player.m_attachPoint;
+            player.transform.SetPositionAndRotation(seat.position, seat.rotation);
+            player.m_body.position = seat.position;
+            player.m_body.rotation = seat.rotation;
         }
     }
 }

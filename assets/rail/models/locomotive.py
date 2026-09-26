@@ -26,8 +26,10 @@ def build():
 
     # Stone firebox under the boiler, with an iron fire door at the back.
     fire_top = DECK_Z + 0.04 + FIREBOX_HEIGHT
-    box("firebox", (1.3, BOILER_LENGTH - 0.3, FIREBOX_HEIGHT), (0, BOILER_Y - 0.15, DECK_Z + 0.04 + FIREBOX_HEIGHT / 2), "stone", grain="y")
-    box("firedoor", (0.5, 0.05, 0.34), (0, BOILER_Y - BOILER_LENGTH / 2 - 0.02, fire_top - FIREBOX_HEIGHT / 2), "iron")
+    # Its back face 2 cm in front of the end of the boiler, faces in one plane
+    # flicker in the game.
+    box("firebox", (1.3, BOILER_LENGTH - 0.34, FIREBOX_HEIGHT), (0, BOILER_Y - 0.13, DECK_Z + 0.04 + FIREBOX_HEIGHT / 2), "stone", grain="y")
+    box("firedoor", (0.5, 0.05, 0.34), (0, BOILER_Y - BOILER_LENGTH / 2, fire_top - FIREBOX_HEIGHT / 2), "iron")
 
     # A lying barrel of wooden staves, held by iron bands.
     cylinder("boiler", BOILER_RADIUS, BOILER_LENGTH, (0, BOILER_Y, BOILER_Z), "wood", axis="y", segments=16)
@@ -53,12 +55,14 @@ def build():
     bin_y = PLATFORM_Y + 0.75
     for side in (-1, 1):
         box(f"binside{side}", (0.06, 0.6, 0.5), (side * 0.55, bin_y, DECK_Z + 0.29), "wood", grain="y")
-    box("binback", (1.16, 0.06, 0.5), (0, bin_y - 0.3, DECK_Z + 0.29), "wood")
+    # Between the side boards and a little narrower than the seat, overlapping
+    # faces in one plane flicker in the game.
+    box("binback", (1.04, 0.06, 0.5), (0, bin_y - 0.3, DECK_Z + 0.29), "wood")
     box("coal", (1.04, 0.54, 0.2), (0, bin_y, DECK_Z + 0.3), "iron")
 
     seat_y = PLATFORM_Y - 0.45
     box("seat", (1.1, 0.4, 0.08), (0, seat_y, DECK_Z + 0.48), "wood")
-    box("seatback", (1.1, 0.06, 0.5), (0, seat_y - 0.2, DECK_Z + 0.75), "wood")
+    box("seatback", (1.06, 0.06, 0.5), (0, seat_y - 0.2, DECK_Z + 0.75), "wood")
     for side in (-1, 1):
         box(f"seatleg{side}", (0.08, 0.36, 0.44), (side * 0.5, seat_y, DECK_Z + 0.26), "wood", grain="z")
 

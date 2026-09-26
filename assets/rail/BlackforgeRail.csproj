@@ -25,6 +25,7 @@
     <Reference Include="UnityEngine.PhysicsModule" HintPath="$(ValheimManaged)\UnityEngine.PhysicsModule.dll" Private="false" />
     <Reference Include="UnityEngine.ParticleSystemModule" HintPath="$(ValheimManaged)\UnityEngine.ParticleSystemModule.dll" Private="false" />
     <Reference Include="UnityEngine.ImageConversionModule" HintPath="$(ValheimManaged)\UnityEngine.ImageConversionModule.dll" Private="false" />
+    <Reference Include="UnityEngine.ScreenCaptureModule" HintPath="$(ValheimManaged)\UnityEngine.ScreenCaptureModule.dll" Private="false" />
     <Reference Include="UnityEngine.UI" HintPath="$(ValheimManaged)\UnityEngine.UI.dll" Private="false" />
     <Reference Include="UnityEngine.UIModule" HintPath="$(ValheimManaged)\UnityEngine.UIModule.dll" Private="false" />
     <Reference Include="UnityEngine.InputLegacyModule" HintPath="$(ValheimManaged)\UnityEngine.InputLegacyModule.dll" Private="false" />

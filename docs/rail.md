@@ -33,8 +33,10 @@ the test server `Test` first, see `status.md`.
   one to the other, so a kink between pieces turns it gradually.
 - **Coal.** The alternative use key on the locomotive loads all the coal the
   player carries, up to 100. With free crafting or free building, like on
-  `Test`, it fills up for nothing. The chimney smokes while there is coal,
-  the smoke of the vanilla smelter, bigger and more with speed. Burnt food on a cooking station gives coal from
+  `Test`, it fills up for nothing. The chimney puffs while there is coal,
+  the smoke puffs of the vanilla smelter. A puff stays where it left the
+  chimney and rises, so a moving train leaves a trail. It puffs every 1.4 s
+  standing and faster with speed, up to about 6 a second. Burnt food on a cooking station gives coal from
   day 1. A trip costs 1 coal per 100 m of track and is paid at departure,
   driving by hand burns the same as it goes.
 - **Sending a train.** The use key on the locomotive opens the menu, every
@@ -78,10 +80,18 @@ frame, in `Train.Step`.
 - The server takes every train nobody near owns and moves it on its saved
   data alone. Nothing of it has to be loaded. A player who comes near sees the
   train at the right spot, and the game hands the train to that player.
-- A client takes over a train the server moves within 80 m of its player, the
-  game alone leaves it with the server near the world center. So the train
-  moves every frame for that player. Other players see it glide on at its
-  speed between the network updates.- The locomotive sets the position of its wagons, walked back along the lines
+- A client takes over a train the server moves within 80 m of its player,
+  but only inside the active area of the player. Outside it the game gives
+  the train back within 2 seconds and each switch jumps the train back.
+- A train another machine moves is drawn by `Follow`: the viewer runs its own
+  copy along the track at the reported speed and pulls it gently toward the
+  owner's data. Guessing in a straight line between the uneven network
+  updates made it jerk, see the table in Testing.
+- The `Simulation` moves the trains and puts them in place in the same
+  `Update`, then puts a seated player on the seat. The game seats a player in
+  the physics step, before the train moves, so the rider and the camera were
+  one frame behind and the train jumped against the camera.
+- The locomotive sets the position of its wagons, walked back along the lines
   it came over.
 
 `Graph` builds the track network from the saved data of every placed track
@@ -196,16 +206,10 @@ The locomotive and wagon get copies of the three materials with the cart.s
 values. `TrainShape` bakes a bend of up to 3 cm, like the ripple of a wall,
 into its own copy of the mesh of each placed train, seeded from its id. So
 every train looks a little different and keeps its shape while it moves.
-Not yet seen in the game.
 
-Still open:
-
-- Three earlier tries at the warp guessed wrong and are still in the code:
-  movement in the physics step with an interpolated kinematic body in
-  `RailBody` and `Simulation.FixedUpdate`, speed prediction for trains another
-  machine moves, and a client that takes over trains the server moves within
-  80 m. Check each against the material fix and remove what is not needed.
-  The physics step change is not committed.
+Faces of two parts in one plane flicker, the GPU cannot tell which is in
+front. The models keep parts out of each other's planes, like the cross
+beams between the long beams of the frame.
 
 ## Things the game version changed
 
@@ -236,3 +240,40 @@ is checked in the game, first in a local world, where the game is its own
 server, then on `Test`. `BepInEx/LogOutput.log` has `rails ready`,
 `rail network ready`, `rail pieces built` with all 21 prefabs and
 `chimney smoke from smelter`.
+
+### Seeing a train the way a player does
+
+The plugin carries tools for the F5 console:
+
+- `railtrace 15` records every frame for 15 seconds, the camera, the player
+  and every train near, into `BepInEx/rail-trace-*.csv`, and logs per train
+  the steps back, hidden frames and shake. Owner changes and trains the scene
+  makes again are always logged.
+- `railshot 3` crops the screen around the nearest train every frame for 3
+  seconds into sheets of 30 in `BepInEx/rail-shots/`.
+- `railshape on|off` and `railmat <property> <value>` switch the baked bend
+  and change the train materials, to compare.
+
+A test also runs by itself, with nobody at the keyboard, when
+`BepInEx/rail-test.txt` exists. It starts the local world `RailTest` with the
+character `Railtest`, builds a loop of track 80 m above the ground, drives a
+train with 3 wagons around it and takes rail shots, then writes
+`BepInEx/rail-test-done.txt` and quits. `RailAutotest.cs` holds the cases.
+`Simulation.Remote` makes its own train act like one the server moves.
+
+```sh
+touch ~/.config/blackforge/profiles/default/BepInEx/rail-test.txt
+cargo build --release -p blackforge-cli && ./target/release/blackforge run
+rm ~/.config/blackforge/profiles/default/BepInEx/rail-test.txt
+```
+
+The change of speed on screen from one frame to the next, measured this way:
+
+| drawing | mean | over 1 m/s |
+| --- | --- | --- |
+| own train | 0.06 m/s | 0 of 80 frames |
+| server train, straight line guess | 0.96 m/s | 19 of 70 frames |
+| server train, `Follow` | 0.07 m/s | 0 of 89 frames |
+
+Not seen yet: a real server with real network delay, and a standing train on
+`Test`, which a player still reports flickering.

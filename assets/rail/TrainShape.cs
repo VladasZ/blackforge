@@ -12,17 +12,46 @@ namespace Blackforge
         private const float Amount = 0.03f;
         private const float Frequency = 0.7f;
 
+        // The console command railshape turns the bend off, to compare.
+        public static bool Enabled = true;
+
+        private Mesh m_model;
+        private Mesh m_bent;
+
         private void Start()
+        {
+            Apply();
+        }
+
+        public void Apply()
         {
             ZNetView view = GetComponentInParent<ZNetView>();
             MeshFilter filter = GetComponent<MeshFilter>();
-            if (view == null || !view.IsValid() || filter == null || filter.sharedMesh == null)
+            if (view == null || !view.IsValid() || filter == null)
             {
                 return;
             }
-            System.Random random = new System.Random(view.GetZDO().m_uid.GetHashCode());
+            if (m_model == null)
+            {
+                m_model = filter.sharedMesh;
+            }
+            if (!Enabled)
+            {
+                filter.sharedMesh = m_model;
+                return;
+            }
+            if (m_bent == null)
+            {
+                m_bent = Bend(m_model, view.GetZDO().m_uid.GetHashCode());
+            }
+            filter.sharedMesh = m_bent;
+        }
+
+        private static Mesh Bend(Mesh model, int seedFrom)
+        {
+            System.Random random = new System.Random(seedFrom);
             Vector3 seed = new Vector3((float)random.NextDouble(), (float)random.NextDouble(), (float)random.NextDouble()) * 1000f;
-            Mesh mesh = Instantiate(filter.sharedMesh);
+            Mesh mesh = Instantiate(model);
             Vector3[] vertices = mesh.vertices;
             for (int i = 0; i < vertices.Length; i++)
             {
@@ -35,15 +64,14 @@ namespace Blackforge
             mesh.vertices = vertices;
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
-            filter.mesh = mesh;
+            return mesh;
         }
 
         private void OnDestroy()
         {
-            MeshFilter filter = GetComponent<MeshFilter>();
-            if (filter != null && filter.sharedMesh != null && filter.sharedMesh.name.EndsWith("(Clone)"))
+            if (m_bent != null)
             {
-                Destroy(filter.sharedMesh);
+                Destroy(m_bent);
             }
         }
     }

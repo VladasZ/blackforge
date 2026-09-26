@@ -119,7 +119,7 @@ namespace Blackforge
             return lines;
         }
 
-        private static Step? FromTrail(List<Step> steps, Queue<string> trail, Vector3 heading)
+        public static Step? FromTrail(List<Step> steps, Queue<string> trail, Vector3 heading)
         {
             if (trail.Count > 0)
             {
@@ -257,25 +257,48 @@ namespace Blackforge
         // wagons walked back along the trail.
         public static void Pose(ZDO zdo, TrackCursor head, List<string> trail)
         {
-            Place(zdo, head, LocomotiveAxles, new Queue<string>(trail));
-            List<ZDOID> wagons = WagonIds(zdo);
+            foreach (Body body in Layout(zdo, head, trail))
+            {
+                ZDO part = body.id == zdo.m_uid ? zdo : ZDOMan.instance.GetZDO(body.id);
+                if (part == null)
+                {
+                    continue;
+                }
+                if (!part.IsOwner())
+                {
+                    part.SetOwner(ZDOMan.GetSessionID());
+                }
+                part.SetPosition(body.position);
+                part.SetRotation(body.rotation);
+                if (part != zdo)
+                {
+                    Save(part, body.cursor);
+                }
+            }
+        }
+
+        public struct Body
+        {
+            public ZDOID id;
+            public TrackCursor cursor;
+            public Vector3 position;
+            public Quaternion rotation;
+        }
+
+        // Where the locomotive and each wagon stand for a head on the track.
+        public static List<Body> Layout(ZDO loco, TrackCursor head, List<string> trail)
+        {
+            List<Body> bodies = new List<Body>();
+            bodies.Add(Place(loco.m_uid, head, LocomotiveAxles, new Queue<string>(trail)));
+            List<ZDOID> wagons = WagonIds(loco);
             TrackCursor back = head;
             Queue<string> queue = new Queue<string>(trail);
             for (int i = 0; i < wagons.Count; i++)
             {
                 back.Walk(-(i == 0 ? FirstGap : WagonGap), (steps, backward) => FromTrail(steps, queue, -back.Forward));
-                ZDO wagon = ZDOMan.instance.GetZDO(wagons[i]);
-                if (wagon == null)
-                {
-                    continue;
-                }
-                if (!wagon.IsOwner())
-                {
-                    wagon.SetOwner(ZDOMan.GetSessionID());
-                }
-                Place(wagon, back, WagonAxles, new Queue<string>(queue));
-                Save(wagon, back);
+                bodies.Add(Place(wagons[i], back, WagonAxles, new Queue<string>(queue)));
             }
+            return bodies;
         }
 
         // The track left to the stop, which is a distance from the A end of the
@@ -288,7 +311,7 @@ namespace Blackforge
         // from one to the other, like a car on two bogies. So a kink between
         // two pieces, up, down or sideways, turns it gradually over its
         // length, not at once.
-        private static void Place(ZDO zdo, TrackCursor center, float half, Queue<string> behind)
+        private static Body Place(ZDOID id, TrackCursor center, float half, Queue<string> behind)
         {
             TrackCursor front = center;
             front.Walk(half, (steps, backward) => TrackCursor.Straightest(steps, front.Forward, 0));
@@ -297,12 +320,9 @@ namespace Blackforge
             Vector3 along = front.Position - rear.Position;
             if (along.sqrMagnitude < 0.01f)
             {
-                zdo.SetPosition(center.Position);
-                zdo.SetRotation(Quaternion.LookRotation(center.Forward, Vector3.up));
-                return;
+                return new Body { id = id, cursor = center, position = center.Position, rotation = Quaternion.LookRotation(center.Forward, Vector3.up) };
             }
-            zdo.SetPosition((front.Position + rear.Position) * 0.5f);
-            zdo.SetRotation(Quaternion.LookRotation(along.normalized, Vector3.up));
+            return new Body { id = id, cursor = center, position = (front.Position + rear.Position) * 0.5f, rotation = Quaternion.LookRotation(along.normalized, Vector3.up) };
         }
 
         private static float RemainingDistance(TrackCursor cursor, List<string> route, float stop)

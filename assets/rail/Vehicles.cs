@@ -15,6 +15,12 @@ namespace Blackforge
             m_nview = GetComponent<ZNetView>();
             Rigidbody body = gameObject.AddComponent<Rigidbody>();
             body.isKinematic = true;
+            RailTrace.Made(m_nview, true);
+        }
+
+        private void OnDestroy()
+        {
+            RailTrace.Made(m_nview, false);
         }
 
         private void Start()
@@ -30,7 +36,17 @@ namespace Blackforge
         private Vector3 m_lastSaved;
         private float m_savedAt;
 
+        // Called by the Simulation each frame, right after it moved the trains,
+        // so the body is where the train is before the camera looks.
         private void LateUpdate()
+        {
+            if (!Simulation.SameFrame)
+            {
+                Show();
+            }
+        }
+
+        public void Show()
         {
             if (m_nview == null || !m_nview.IsValid())
             {
@@ -39,7 +55,7 @@ namespace Blackforge
             ZDO zdo = m_nview.GetZDO();
             Vector3 saved = zdo.GetPosition();
             Quaternion rotation = zdo.GetRotation();
-            if (zdo.IsOwner())
+            if (zdo.IsOwner() && !Simulation.Remote)
             {
                 transform.SetPositionAndRotation(saved, rotation);
                 return;
@@ -92,34 +108,51 @@ namespace Blackforge
 
         public ZDOID Id => m_nview.GetZDO().m_uid;
 
-        private ParticleSystem[] m_smoke;
-        private float[] m_smokeRates;
+        private Transform m_chimney;
+        private float m_nextPuff;
 
-        // The chimney smokes while there is coal to burn, more the faster the
-        // train goes.
+        // The chimney puffs while there is coal to burn: slowly while the
+        // train stands, faster and harder the faster it goes, like the strokes
+        // of a steam engine. A puff stays where it left the chimney and rises,
+        // so a moving train leaves a trail behind it.
         private void Update()
         {
-            Transform smoke = transform.Find("smoke");
-            if (smoke == null || !m_nview.IsValid())
+            if (Pieces.SmokePuff == null || !m_nview.IsValid() || Player.m_localPlayer == null)
             {
                 return;
             }
+            if (m_chimney == null)
+            {
+                m_chimney = transform.Find("smoke");
+            }
             ZDO zdo = m_nview.GetZDO();
-            bool burning = zdo.GetInt(Train.Coal) > 0;
-            if (smoke.gameObject.activeSelf != burning)
+            if (m_chimney == null || zdo.GetInt(Train.Coal) <= 0 || Time.time < m_nextPuff)
             {
-                smoke.gameObject.SetActive(burning);
+                return;
             }
-            if (m_smoke == null)
+            // Like the smelter, no smoke far from the player.
+            if (Vector3.Distance(Player.m_localPlayer.transform.position, m_chimney.position) > 64f)
             {
-                m_smoke = smoke.GetComponentsInChildren<ParticleSystem>(true);
-                m_smokeRates = m_smoke.Select(s => s.emission.rateOverTimeMultiplier).ToArray();
+                m_nextPuff = Time.time + 1f;
+                return;
             }
-            float boost = 1f + Mathf.Abs(zdo.GetFloat(Train.Speed)) * 0.4f;
-            for (int i = 0; i < m_smoke.Length; i++)
+            float speed = Mathf.Abs(zdo.GetFloat(Train.Speed));
+            m_nextPuff = Time.time + (speed < 0.3f ? 1.4f : Mathf.Clamp(1.8f / speed, 0.15f, 1.4f));
+            if (Smoke.GetTotalSmoke() > 100)
             {
-                ParticleSystem.EmissionModule emission = m_smoke[i].emission;
-                emission.rateOverTimeMultiplier = m_smokeRates[i] * boost;
+                Smoke.FadeOldest();
+            }
+            GameObject puff = Instantiate(Pieces.SmokePuff, m_chimney.position, Random.rotation);
+            Smoke smoke = puff.GetComponent<Smoke>();
+            if (smoke != null)
+            {
+                // A shorter life than a smelter puff, a train makes many.
+                smoke.m_ttl = Mathf.Min(smoke.m_ttl, 6f);
+            }
+            Rigidbody body = puff.GetComponent<Rigidbody>();
+            if (body != null)
+            {
+                body.linearVelocity = Vector3.up * (1.5f + speed * 0.25f) + Random.insideUnitSphere * 0.3f;
             }
         }
 
@@ -257,7 +290,7 @@ namespace Blackforge
             if (m_loco != null)
             {
                 int side = moveDir.x > 0.3f ? 1 : moveDir.x < -0.3f ? -1 : 0;
-                Train.Controls[m_loco.Id] = (Mathf.Clamp(moveDir.z, -1f, 1f), side);
+                Train.Controls[m_loco.Id] = (RailAutotest.Throttle ?? Mathf.Clamp(moveDir.z, -1f, 1f), side);
             }
         }
 

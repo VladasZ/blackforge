@@ -58,6 +58,13 @@ namespace Blackforge
         };
 
         private static GameObject holder;
+
+        // The smoke puff of the vanilla smelter, see RailLocomotive.
+        public static GameObject SmokePuff;
+
+        // The materials of locomotives and wagons, the console command railmat
+        // changes them.
+        public static List<Material> Moving = new List<Material>();
         private static readonly Dictionary<string, GameObject> prefabs = new Dictionary<string, GameObject>();
 
         public static IEnumerable<GameObject> All => prefabs.Values;
@@ -90,24 +97,27 @@ namespace Blackforge
             // which would make a moving train wobble. The bend a train gets when
             // it is placed is baked into its mesh, see TrainShape.
             Dictionary<string, Material> moving = materials.ToDictionary(p => p.Key, p => Moveable(p.Value));
-            // The chimney smoke is the smoke of the vanilla smelter.
-            GameObject smoke = byName.TryGetValue("smelter", out GameObject smelter)
-                ? smelter.GetComponentsInChildren<ParticleSystem>(true).Select(p => p.gameObject).FirstOrDefault(g => g.name.ToLowerInvariant().Contains("smoke"))
+            Moving = moving.Values.ToList();
+            // The chimney smoke is the smoke of the vanilla smelter: puffs that
+            // stay where they left the chimney and rise, so a moving train
+            // leaves a trail.
+            SmokePuff = byName.TryGetValue("smelter", out GameObject smelter)
+                ? smelter.GetComponentsInChildren<SmokeSpawner>(true).Select(s => s.m_smokePrefab).FirstOrDefault(p => p != null)
                 : null;
-            RailPlugin.Log.LogInfo(smoke != null ? $"chimney smoke from smelter {smoke.name}" : "the smelter has no smoke, the chimney stays clear");
+            RailPlugin.Log.LogInfo(SmokePuff != null ? $"chimney smoke from smelter {SmokePuff.name}" : "the smelter has no smoke, the chimney stays clear");
 
             holder = new GameObject("BlackforgeRailPrefabs");
             holder.SetActive(false);
             UnityEngine.Object.DontDestroyOnLoad(holder);
             foreach (Spec spec in Specs)
             {
-                prefabs[spec.prefab] = Build(spec, Placement.IsVehicle(spec.prefab) ? moving : materials, cart, smoke);
+                prefabs[spec.prefab] = Build(spec, Placement.IsVehicle(spec.prefab) ? moving : materials, cart);
             }
             RailPlugin.Log.LogInfo($"rail pieces built: {string.Join(", ", prefabs.Keys)}");
             return true;
         }
 
-        private static GameObject Build(Spec spec, Dictionary<string, Material> materials, GameObject cart, GameObject smoke)
+        private static GameObject Build(Spec spec, Dictionary<string, Material> materials, GameObject cart)
         {
             int layer = LayerMask.NameToLayer("piece");
             GameObject root = new GameObject(spec.prefab) { layer = layer };
@@ -194,25 +204,10 @@ namespace Blackforge
                 attach.transform.SetParent(root.transform, false);
                 attach.transform.localPosition = new Vector3(0f, 1.8f, -1.85f);
                 seat.AddComponent<RailSeat>().m_attach = attach.transform;
-                if (smoke != null)
-                {
-                    // The top of the chimney, see models/locomotive.py.
-                    GameObject chimney = UnityEngine.Object.Instantiate(smoke, root.transform, false);
-                    chimney.name = "smoke";
-                    chimney.transform.localPosition = new Vector3(0f, 4.45f, 1.5f);
-                    chimney.transform.localRotation = Quaternion.identity;
-                    // Much more and bigger smoke than a smelter, a locomotive works hard.
-                    foreach (ParticleSystem system in chimney.GetComponentsInChildren<ParticleSystem>(true))
-                    {
-                        ParticleSystem.MainModule main = system.main;
-                        main.startSizeMultiplier *= 2.5f;
-                        main.startLifetimeMultiplier *= 1.5f;
-                        main.maxParticles *= 8;
-                        ParticleSystem.EmissionModule emission = system.emission;
-                        emission.rateOverTimeMultiplier *= 4f;
-                    }
-                    chimney.SetActive(false);
-                }
+                // The top of the chimney, see models/locomotive.py.
+                GameObject chimney = new GameObject("smoke");
+                chimney.transform.SetParent(root.transform, false);
+                chimney.transform.localPosition = new Vector3(0f, 4.45f, 1.5f);
             }
             if (spec.prefab == "bf_wagon")
             {
@@ -231,7 +226,7 @@ namespace Blackforge
             return root;
         }
 
-        private static readonly string[] ShaderProperties = { "_MoveableObject", "_TriplanarLocalPos", "_TriplanarMap", "_ValueNoise", "_ValueNoiseVertex", "_RippleDistance", "_RippleFreq" };
+        public static readonly string[] ShaderProperties = { "_MoveableObject", "_TriplanarLocalPos", "_TriplanarMap", "_ValueNoise", "_ValueNoiseVertex", "_RippleDistance", "_RippleFreq" };
 
         private static Material Moveable(Material source)
         {
