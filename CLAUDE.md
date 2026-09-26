@@ -29,3 +29,21 @@ only cut after the change was seen working for real, never on tests alone.
 - Anything that cannot be checked on this machine is named to the user before
   the tag, with what is unverified. The user decides, never tag past it.
 - "deploy all" or "release" is not permission to skip this.
+
+## Every release goes through a throwaway server first
+
+No release tag and no change to the mods of Durka or Arkham Asylum without a
+test on a new throwaway server first. The Sailing mod shipped in v0.1.27 and
+went on both servers, then refused to load next to Valheim Plus. A throwaway
+server would have shown it in a minute.
+
+- Start a new throwaway server for every release, never reuse an old one and
+  never test on Durka or Arkham Asylum. The recipe is in `docs/status.md`. Give
+  it the exact mods and versions of the real servers plus the change.
+- Read its BepInEx log. Every mod must have its `Loading [...]` line and no
+  `Could not load` line, no errors from the change.
+- Join it with the app built from the release commit, and check the change
+  in the game, the way a player uses it.
+- Stop and remove the throwaway server when done.
+- No tag until all of this passed. The user saying "release" or "tag now" does
+  not skip it. Name the step that did not run and wait.
