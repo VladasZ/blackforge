@@ -3,8 +3,6 @@
 # them. A mod here goes into the composes of the servers too, at the same
 # version.
 
-# The Sailing skill. It refuses a join when the versions of the player and
-# the server differ, so the version moves here and in the composes together.
-[[games.valheim]]
-package = "Smoothbrain-Sailing"
-version = "1.1.8"
+# Empty for now. Sailing was here, but it refuses to load next to Valheim
+# Plus, which every server runs.
+[games]

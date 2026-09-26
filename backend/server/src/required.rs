@@ -31,16 +31,6 @@ pub fn routes<S: Clone + Send + Sync + 'static>(list: RequiredList) -> Router<S>
 mod tests {
     use super::load;
 
-    #[test]
-    fn the_list_parses_and_names_sailing() {
-        let list = load().unwrap();
-        assert!(
-            list.games["valheim"]
-                .iter()
-                .any(|entry| entry.package == "Smoothbrain-Sailing")
-        );
-    }
-
     /// The app refuses an entry it cannot read and then adds nothing, so the
     /// file is checked at build time.
     #[test]

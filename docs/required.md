@@ -1,8 +1,10 @@
 # Required mods
 
-Some mods every player gets, always. The first one is the Sailing skill,
-`Smoothbrain-Sailing`. Nobody adds it by hand, and nobody can remove it or
-switch it off.
+Some mods every player gets, always. Nobody adds them by hand, and nobody can
+remove them or switch them off. The list is empty for now. The Sailing skill,
+`Smoothbrain-Sailing`, was on it, but it refuses to load next to Valheim Plus,
+which every server runs. Check the incompatible list of a mod before it goes
+on the list.
 
 ## The list
 
