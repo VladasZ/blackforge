@@ -26,6 +26,7 @@ pub mod manifest;
 pub mod paths;
 pub mod profile;
 pub mod progress;
+pub mod quit;
 pub mod r2;
 pub mod required;
 pub mod resolve;

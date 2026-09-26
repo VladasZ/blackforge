@@ -19,7 +19,7 @@ use crate::{
     achievements, emoji,
     error::{Error, IoContext, Result},
     game::{GameDef, GameInstall, Target},
-    hugin, join, steam,
+    hugin, join, quit, steam,
     util::exists,
 };
 
@@ -53,6 +53,18 @@ impl Os {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClientPlugins {
+    /// The plugin that keeps Cmd+Q from closing the game, macOS only.
+    pub quit: bool,
+}
+
+fn client_plugins(input: &LaunchInput<'_>) -> Option<ClientPlugins> {
+    join::applies_to(input.game).then(|| ClientPlugins {
+        quit: quit::applies_to(input.os),
+    })
+}
+
 /// The exact process to start. Built without side effects so every system
 /// can be tested on any machine.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -65,9 +77,10 @@ pub struct LaunchPlan {
     pub game_files: Vec<String>,
     /// Whether the achievements plugin goes into the profile first.
     pub keep_achievements: bool,
-    /// Whether the Valheim client plugins, the join buttons and the one that
-    /// keeps the tutorial ravens away, go into the profile first.
-    pub client_plugins: bool,
+    /// The Valheim client plugins that go into the profile first, the join
+    /// buttons, the one that keeps the tutorial ravens away and the others.
+    /// `None` for any other game or a server.
+    pub client_plugins: Option<ClientPlugins>,
     /// The Steam app has to run before the start, see `steam`.
     pub needs_steam: bool,
     /// The game program when the started process only hands the start on
@@ -178,7 +191,7 @@ fn windows_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
             DOORSTOP_VERSION.to_owned(),
         ],
         keep_achievements: keeps_achievements(input),
-        client_plugins: join::applies_to(input.game),
+        client_plugins: client_plugins(input),
         // Steam opens itself, the start goes through it.
         needs_steam: false,
         handed_to,
@@ -258,7 +271,7 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
             cwd,
             game_files: Vec::new(),
             keep_achievements: keeps_achievements(input),
-            client_plugins: join::applies_to(input.game),
+            client_plugins: client_plugins(input),
             needs_steam: steam::needed(input.os, input.game.target),
             handed_to: None,
         };
@@ -270,7 +283,7 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
         cwd,
         game_files: Vec::new(),
         keep_achievements: keeps_achievements(input),
-        client_plugins: join::applies_to(input.game),
+        client_plugins: client_plugins(input),
         needs_steam: steam::needed(input.os, input.game.target),
         handed_to: None,
     }
@@ -284,11 +297,14 @@ fn unix_plan(input: &LaunchInput<'_>, preloader: String) -> LaunchPlan {
 /// `run` switches it on through the command line.
 pub async fn prepare(plan: &LaunchPlan, profile_dir: &Path) -> Result<()> {
     achievements::apply(profile_dir, plan.keep_achievements).await?;
-    if plan.client_plugins {
+    if let Some(plugins) = plan.client_plugins {
         join::apply(profile_dir).await?;
         join::refresh_list(profile_dir).await?;
         hugin::apply(profile_dir).await?;
         emoji::apply(profile_dir).await?;
+        if plugins.quit {
+            quit::apply(profile_dir).await?;
+        }
     }
     for name in &plan.game_files {
         let source = profile_dir.join(name);
@@ -414,7 +430,7 @@ mod tests {
         assert!(plan.env.is_empty());
         assert!(plan.game_files.is_empty());
         assert!(plan.keep_achievements);
-        assert!(plan.client_plugins);
+        assert_eq!(plan.client_plugins, Some(ClientPlugins { quit: true }));
         assert!(plan.needs_steam);
         Ok(())
     }
@@ -469,7 +485,7 @@ mod tests {
         );
         // A server has no achievements, the setting of the user is dropped.
         assert!(!plan.keep_achievements);
-        assert!(!plan.client_plugins);
+        assert_eq!(plan.client_plugins, None);
         Ok(())
     }
 

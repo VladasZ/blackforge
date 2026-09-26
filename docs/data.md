@@ -38,6 +38,10 @@ Valheim client.
 ravens away, see `hugin.md`. It is written before every start of the Valheim
 client too.
 
+`BepInEx/plugins/blackforge-quit` is the plugin that keeps Cmd+Q from closing
+the game, see `quit.md`. It is written before every start of the Valheim
+client on macOS only.
+
 `BepInEx/plugins/blackforge-emoji` is the chat emojis plugin with its sprite
 sheets and `emojis.json`, see `emoji.md`. It is written before every start of
 the Valheim client too.

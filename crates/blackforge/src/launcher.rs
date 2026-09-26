@@ -275,7 +275,7 @@ fn launch(game_dir: Option<PathBuf>) {
             })?;
             // No arguments, they carry the key of the join bridge.
             log::info!(
-                "the game starts: {} in {}, handed to {:?}, profile {}, client plugins {}",
+                "the game starts: {} in {}, handed to {:?}, profile {}, client plugins {:?}",
                 plan.program.display(),
                 plan.cwd.display(),
                 plan.handed_to,
