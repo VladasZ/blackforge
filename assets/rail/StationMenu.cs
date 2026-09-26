@@ -85,7 +85,10 @@ namespace Blackforge
 
         private static void Label(Transform parent, string text, float size, Vector2 at, Color color)
         {
+            // Built inactive, so the text gets the game font before it wakes up
+            // and looks for a default font the game does not ship.
             GameObject go = new GameObject("label");
+            go.SetActive(false);
             go.transform.SetParent(parent, false);
             RectTransform rect = go.AddComponent<RectTransform>();
             rect.sizeDelta = new Vector2(520, 50);
@@ -97,6 +100,7 @@ namespace Blackforge
             label.color = color;
             label.text = text;
             label.raycastTarget = false;
+            go.SetActive(true);
         }
 
         private static void Button(Transform parent, string text, Vector2 at, bool enabled, UnityEngine.Events.UnityAction click)

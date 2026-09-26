@@ -11,10 +11,12 @@ the test server `Test` first, see `status.md`.
 
 ## Playing
 
-- **Track.** 14 pieces in the Transport tab of the build menu: straights of 1,
+- **Track.** 18 pieces in the Transport tab of the build menu: straights of 1,
   2 and 4 m, curves of 8 m at 22.5, 45 and 90 degrees, of 16 m at 22.5 and 45
   and of 32 m at 22.5, a gentle and a steep slope, a left and a right switch
-  and a crossing. Every end is a snap point. A curve turns right, placed the
+  and a crossing. A slope bottom and a slope top of 4 m for each slope bend
+  the track evenly between flat and slope, so a hill is flat, bottom, slopes,
+  top, flat, and the same pieces turned round go down. Every end is a snap point. A curve turns right, placed the
   other way round it turns left. Every curve ends on a 22.5 degree step, the
   rotation step of the hammer.
 - **Support.** Track and stations need support like a wood floor. A piece on
@@ -25,9 +27,14 @@ the test server `Test` first, see `status.md`.
   station has is refused, a station with no name is not in the menu.
 - **Locomotive and wagons.** They go only onto track, the ghost sits on the
   centerline under the cursor and is red off the track. The hammer rotation
-  picks which way they face. They cannot be damaged.
+  picks which way they face. Like the vanilla cart they have a WearNTear, so
+  the hammer highlights and removes them, but they need no support and take
+  no damage. A body sits between its outer axles on the track and faces from
+  one to the other, so a kink between pieces turns it gradually.
 - **Coal.** The alternative use key on the locomotive loads all the coal the
-  player carries, up to 100. Burnt food on a cooking station gives coal from
+  player carries, up to 100. With free crafting or free building, like on
+  `Test`, it fills up for nothing. The chimney smokes while there is coal,
+  the smoke of the vanilla smelter, bigger and more with speed. Burnt food on a cooking station gives coal from
   day 1. A trip costs 1 coal per 100 m of track and is paid at departure,
   driving by hand burns the same as it goes.
 - **Sending a train.** The use key on the locomotive opens the menu, every
@@ -71,7 +78,10 @@ frame, in `Train.Step`.
 - The server takes every train nobody near owns and moves it on its saved
   data alone. Nothing of it has to be loaded. A player who comes near sees the
   train at the right spot, and the game hands the train to that player.
-- The locomotive sets the position of its wagons, walked back along the lines
+- A client takes over a train the server moves within 80 m of its player, the
+  game alone leaves it with the server near the world center. So the train
+  moves every frame for that player. Other players see it glide on at its
+  speed between the network updates.- The locomotive sets the position of its wagons, walked back along the lines
   it came over.
 
 `Graph` builds the track network from the saved data of every placed track
@@ -185,4 +195,5 @@ a new dll, the Rust side embeds it at compile time.
 `cargo test -p blackforge-core rail` checks that the dll is written. The rest
 is checked in the game, first in a local world, where the game is its own
 server, then on `Test`. `BepInEx/LogOutput.log` has `rails ready`,
-`rail network ready` and `rail pieces built` with all 17 prefabs.
+`rail network ready`, `rail pieces built` with all 21 prefabs and
+`chimney smoke from smelter`.

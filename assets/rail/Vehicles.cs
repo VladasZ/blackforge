@@ -27,6 +27,9 @@ namespace Blackforge
             }
         }
 
+        private Vector3 m_lastSaved;
+        private float m_savedAt;
+
         private void LateUpdate()
         {
             if (m_nview == null || !m_nview.IsValid())
@@ -34,9 +37,46 @@ namespace Blackforge
                 return;
             }
             ZDO zdo = m_nview.GetZDO();
-            float follow = zdo.IsOwner() ? 1f : Mathf.Clamp01(Time.deltaTime * 12f);
-            transform.position = Vector3.Lerp(transform.position, zdo.GetPosition(), follow);
-            transform.rotation = Quaternion.Slerp(transform.rotation, zdo.GetRotation(), follow);
+            Vector3 saved = zdo.GetPosition();
+            Quaternion rotation = zdo.GetRotation();
+            if (zdo.IsOwner())
+            {
+                transform.SetPositionAndRotation(saved, rotation);
+                return;
+            }
+            // Another machine moves this train and its position comes in a
+            // few times a second. Between updates it glides on at its speed.
+            if (saved != m_lastSaved)
+            {
+                m_lastSaved = saved;
+                m_savedAt = Time.time;
+            }
+            float speed = LocomotiveSpeed(zdo);
+            Vector3 predicted = saved + rotation * Vector3.forward * speed * Mathf.Min(Time.time - m_savedAt, 0.3f);
+            float follow = Mathf.Clamp01(Time.deltaTime * 20f);
+            if ((transform.position - predicted).sqrMagnitude > 25f)
+            {
+                follow = 1f;
+            }
+            transform.position = Vector3.Lerp(transform.position, predicted, follow);
+            transform.rotation = Quaternion.Slerp(transform.rotation, rotation, follow);
+        }
+
+        // A wagon takes the speed of the locomotive that pulls it.
+        private float LocomotiveSpeed(ZDO zdo)
+        {
+            if (zdo.GetPrefab() == Train.LocomotiveHash)
+            {
+                return zdo.GetFloat(Train.Speed);
+            }
+            foreach (ZDO loco in Train.Trains())
+            {
+                if (Train.WagonIds(loco).Contains(zdo.m_uid))
+                {
+                    return loco.GetFloat(Train.Speed);
+                }
+            }
+            return 0f;
         }
     }
 
@@ -51,6 +91,37 @@ namespace Blackforge
         }
 
         public ZDOID Id => m_nview.GetZDO().m_uid;
+
+        private ParticleSystem[] m_smoke;
+        private float[] m_smokeRates;
+
+        // The chimney smokes while there is coal to burn, more the faster the
+        // train goes.
+        private void Update()
+        {
+            Transform smoke = transform.Find("smoke");
+            if (smoke == null || !m_nview.IsValid())
+            {
+                return;
+            }
+            ZDO zdo = m_nview.GetZDO();
+            bool burning = zdo.GetInt(Train.Coal) > 0;
+            if (smoke.gameObject.activeSelf != burning)
+            {
+                smoke.gameObject.SetActive(burning);
+            }
+            if (m_smoke == null)
+            {
+                m_smoke = smoke.GetComponentsInChildren<ParticleSystem>(true);
+                m_smokeRates = m_smoke.Select(s => s.emission.rateOverTimeMultiplier).ToArray();
+            }
+            float boost = 1f + Mathf.Abs(zdo.GetFloat(Train.Speed)) * 0.4f;
+            for (int i = 0; i < m_smoke.Length; i++)
+            {
+                ParticleSystem.EmissionModule emission = m_smoke[i].emission;
+                emission.rateOverTimeMultiplier = m_smokeRates[i] * boost;
+            }
+        }
 
         public string GetHoverText()
         {
@@ -105,13 +176,19 @@ namespace Blackforge
             Inventory inventory = user.GetInventory();
             ZDO zdo = m_nview.GetZDO();
             int room = Train.MaxCoal - zdo.GetInt(Train.Coal);
-            int amount = Mathf.Min(room, inventory.CountItems("$item_coal"));
+            // With free crafting or free building, like on the test server, the
+            // locomotive fills up for nothing.
+            bool free = ZoneSystem.instance.GetGlobalKey(GlobalKeys.NoCraftCost) || ZoneSystem.instance.GetGlobalKey(GlobalKeys.NoBuildCost);
+            int amount = free ? room : Mathf.Min(room, inventory.CountItems("$item_coal"));
             if (amount <= 0)
             {
                 user.Message(MessageHud.MessageType.Center, room <= 0 ? "The locomotive is full of coal" : "You have no coal");
                 return;
             }
-            inventory.RemoveItem("$item_coal", amount);
+            if (!free)
+            {
+                inventory.RemoveItem("$item_coal", amount);
+            }
             Network.ToOwner(Id, "bf_coal", Id, amount);
             user.Message(MessageHud.MessageType.Center, $"{amount} coal added");
         }

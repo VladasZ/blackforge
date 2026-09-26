@@ -24,6 +24,35 @@ class Straight:
         return (0.0, s * math.cos(self.pitch), s * math.sin(self.pitch)), 0.0, self.pitch
 
 
+class Ease:
+    """A slope whose steepness changes evenly from one end to the other, so a
+    train tips over gradually. Grades are rise over run."""
+
+    def __init__(self, run, grade0, grade1, samples=64):
+        self.table = []
+        s = 0.0
+        last = (0.0, 0.0)
+        for i in range(samples + 1):
+            x = run * i / samples
+            z = x * grade0 + (grade1 - grade0) * x * x / (2 * run)
+            if i:
+                s += math.hypot(x - last[0], z - last[1])
+            self.table.append((s, x, z))
+            last = (x, z)
+        self.length = s
+        self.run = run
+        self.grades = (grade0, grade1)
+
+    def at(self, s):
+        for (s0, x0, z0), (s1, x1, z1) in zip(self.table, self.table[1:]):
+            if s <= s1 or (s1, x1, z1) == self.table[-1]:
+                t = 0.0 if s1 == s0 else min(max((s - s0) / (s1 - s0), 0.0), 1.0)
+                x = x0 + t * (x1 - x0)
+                grade = self.grades[0] + (self.grades[1] - self.grades[0]) * x / self.run
+                return (0.0, x, z0 + t * (z1 - z0)), 0.0, math.atan(grade)
+        return (0.0, self.run, 0.0), 0.0, 0.0
+
+
 class Curve:
     def __init__(self, radius, degrees):
         self.radius = radius
@@ -92,6 +121,13 @@ def slope(rise):
     return build
 
 
+def ease(grade0, grade1):
+    def build():
+        run("track", Ease(4.0, grade0, grade1))
+
+    return build
+
+
 def curve(radius, degrees):
     def build():
         run("track", Curve(radius, degrees))
@@ -134,6 +170,10 @@ PIECES = {
     "track_curve_r32_22": curve(32, 22.5),
     "track_slope_gentle": slope(0.5),
     "track_slope_steep": slope(1.0),
+    "track_slope_bottom_gentle": ease(0.0, 0.25),
+    "track_slope_top_gentle": ease(0.25, 0.0),
+    "track_slope_bottom_steep": ease(0.0, 0.5),
+    "track_slope_top_steep": ease(0.5, 0.0),
     "track_switch_right": switch(False),
     "track_switch_left": switch(True),
     "track_crossing": crossing,

@@ -11,7 +11,7 @@ namespace Blackforge
     //
     // Track and stations get a vanilla WearNTear of wood, so they need support
     // like a wood floor and break when they reach too far into the air. Every
-    // other damage is off, see RailPiece. Trains are vehicles and get none.
+    // other damage is off, see RailPiece. Trains get one without support.
     public static class Pieces
     {
         public class Spec
@@ -37,6 +37,10 @@ namespace Blackforge
             new Spec { prefab = "bf_track_curve_r32_22", model = "track_curve_r32_22", name = "Curve 32 m, 22.5 degrees", description = "A very wide turn. Place it the other way round to turn left.", wood = 13, stone = 25 },
             new Spec { prefab = "bf_track_slope_gentle", model = "track_slope_gentle", name = "Gentle slope", description = "Rises 0.5 m over 2 m.", wood = 2, stone = 4 },
             new Spec { prefab = "bf_track_slope_steep", model = "track_slope_steep", name = "Steep slope", description = "Rises 1 m over 2 m.", wood = 2, stone = 5 },
+            new Spec { prefab = "bf_track_slope_bottom_gentle", model = "track_slope_bottom_gentle", name = "Gentle slope bottom", description = "Bends from flat into a gentle slope over 4 m. Turned round it ends a slope going down.", wood = 4, stone = 8 },
+            new Spec { prefab = "bf_track_slope_top_gentle", model = "track_slope_top_gentle", name = "Gentle slope top", description = "Levels a gentle slope out over 4 m. Turned round it starts a slope going down.", wood = 4, stone = 8 },
+            new Spec { prefab = "bf_track_slope_bottom_steep", model = "track_slope_bottom_steep", name = "Steep slope bottom", description = "Bends from flat into a steep slope over 4 m. Turned round it ends a slope going down.", wood = 4, stone = 8 },
+            new Spec { prefab = "bf_track_slope_top_steep", model = "track_slope_top_steep", name = "Steep slope top", description = "Levels a steep slope out over 4 m. Turned round it starts a slope going down.", wood = 4, stone = 8 },
             new Spec { prefab = "bf_track_switch_right", model = "track_switch_right", name = "Switch right", description = "A straight with a 16 m branch to the right.", wood = 12, stone = 25 },
             new Spec { prefab = "bf_track_switch_left", model = "track_switch_left", name = "Switch left", description = "A straight with a 16 m branch to the left.", wood = 12, stone = 25 },
             new Spec { prefab = "bf_track_crossing", model = "track_crossing", name = "Crossing", description = "Two tracks crossing at a right angle.", wood = 8, stone = 16 },
@@ -80,19 +84,24 @@ namespace Blackforge
                 materials[slot] = found;
             }
             byName.TryGetValue("Cart", out GameObject cart);
+            // The chimney smoke is the smoke of the vanilla smelter.
+            GameObject smoke = byName.TryGetValue("smelter", out GameObject smelter)
+                ? smelter.GetComponentsInChildren<ParticleSystem>(true).Select(p => p.gameObject).FirstOrDefault(g => g.name.ToLowerInvariant().Contains("smoke"))
+                : null;
+            RailPlugin.Log.LogInfo(smoke != null ? $"chimney smoke from smelter {smoke.name}" : "the smelter has no smoke, the chimney stays clear");
 
             holder = new GameObject("BlackforgeRailPrefabs");
             holder.SetActive(false);
             UnityEngine.Object.DontDestroyOnLoad(holder);
             foreach (Spec spec in Specs)
             {
-                prefabs[spec.prefab] = Build(spec, materials, cart);
+                prefabs[spec.prefab] = Build(spec, materials, cart, smoke);
             }
             RailPlugin.Log.LogInfo($"rail pieces built: {string.Join(", ", prefabs.Keys)}");
             return true;
         }
 
-        private static GameObject Build(Spec spec, Dictionary<string, Material> materials, GameObject cart)
+        private static GameObject Build(Spec spec, Dictionary<string, Material> materials, GameObject cart, GameObject smoke)
         {
             int layer = LayerMask.NameToLayer("piece");
             GameObject root = new GameObject(spec.prefab) { layer = layer };
@@ -141,18 +150,19 @@ namespace Blackforge
                 root.AddComponent<RailTrack>().m_model = spec.model;
             }
 
-            if (spec.prefab != "bf_locomotive" && spec.prefab != "bf_wagon")
-            {
-                WearNTear wear = root.AddComponent<WearNTear>();
-                wear.m_materialType = WearNTear.MaterialType.Wood;
-                wear.m_supports = true;
-                wear.m_noRoofWear = true;
-                wear.m_noSupportWear = true;
-                wear.m_snowDamageImmune = true;
-                wear.m_ashDamageImmune = true;
-                wear.m_burnable = false;
-                wear.m_health = 400f;
-            }
+            // Trains get one too, like the vanilla cart, so the hammer highlights
+            // and removes them the vanilla way. They need no support and move.
+            bool vehicle = Placement.IsVehicle(spec.prefab);
+            WearNTear wear = root.AddComponent<WearNTear>();
+            wear.m_materialType = WearNTear.MaterialType.Wood;
+            wear.m_supports = !vehicle;
+            wear.m_noRoofWear = true;
+            wear.m_noSupportWear = !vehicle;
+            wear.m_staticPosition = !vehicle;
+            wear.m_snowDamageImmune = true;
+            wear.m_ashDamageImmune = true;
+            wear.m_burnable = false;
+            wear.m_health = 400f;
 
             if (spec.prefab == "bf_station")
             {
@@ -174,6 +184,25 @@ namespace Blackforge
                 attach.transform.SetParent(root.transform, false);
                 attach.transform.localPosition = new Vector3(0f, 1.8f, -1.85f);
                 seat.AddComponent<RailSeat>().m_attach = attach.transform;
+                if (smoke != null)
+                {
+                    // The top of the chimney, see models/locomotive.py.
+                    GameObject chimney = UnityEngine.Object.Instantiate(smoke, root.transform, false);
+                    chimney.name = "smoke";
+                    chimney.transform.localPosition = new Vector3(0f, 4.45f, 1.5f);
+                    chimney.transform.localRotation = Quaternion.identity;
+                    // Much more and bigger smoke than a smelter, a locomotive works hard.
+                    foreach (ParticleSystem system in chimney.GetComponentsInChildren<ParticleSystem>(true))
+                    {
+                        ParticleSystem.MainModule main = system.main;
+                        main.startSizeMultiplier *= 2.5f;
+                        main.startLifetimeMultiplier *= 1.5f;
+                        main.maxParticles *= 8;
+                        ParticleSystem.EmissionModule emission = system.emission;
+                        emission.rateOverTimeMultiplier *= 4f;
+                    }
+                    chimney.SetActive(false);
+                }
             }
             if (spec.prefab == "bf_wagon")
             {

@@ -375,6 +375,30 @@ namespace Blackforge
     // Moves every train this machine owns, each frame.
     public class Simulation : MonoBehaviour
     {
+        private const float Near = 80f;
+        private float m_nextTake;
+
+        // A client takes over the trains the server moves near its player, so
+        // they move every frame for that player and not in network steps. The
+        // game gives them back when the player leaves.
+        private void TakeNearTrains()
+        {
+            Player player = Player.m_localPlayer;
+            if (Network.IsServer || player == null || Time.time < m_nextTake)
+            {
+                return;
+            }
+            m_nextTake = Time.time + 0.5f;
+            long server = Network.Server;
+            foreach (ZDO loco in Train.Trains())
+            {
+                if (loco.GetOwner() == server && (loco.GetPosition() - player.transform.position).sqrMagnitude < Near * Near)
+                {
+                    loco.SetOwner(ZDOMan.GetSessionID());
+                }
+            }
+        }
+
         private void Update()
         {
             if (ZNet.instance == null || ZDOMan.instance == null)
@@ -383,6 +407,7 @@ namespace Blackforge
             }
             Graph.Update();
             Network.ServerTick();
+            TakeNearTrains();
             float dt = Time.deltaTime;
             foreach (ZDO loco in Train.Trains())
             {
