@@ -84,6 +84,12 @@ namespace Blackforge
                 materials[slot] = found;
             }
             byName.TryGetValue("Cart", out GameObject cart);
+            LogShader(cart, materials[Models.Wood]);
+            // Trains move, so their materials work in their own space: the piece
+            // shader bends every vertex by a noise read from its world position,
+            // which would make a moving train wobble. The bend a train gets when
+            // it is placed is baked into its mesh, see TrainShape.
+            Dictionary<string, Material> moving = materials.ToDictionary(p => p.Key, p => Moveable(p.Value));
             // The chimney smoke is the smoke of the vanilla smelter.
             GameObject smoke = byName.TryGetValue("smelter", out GameObject smelter)
                 ? smelter.GetComponentsInChildren<ParticleSystem>(true).Select(p => p.gameObject).FirstOrDefault(g => g.name.ToLowerInvariant().Contains("smoke"))
@@ -95,7 +101,7 @@ namespace Blackforge
             UnityEngine.Object.DontDestroyOnLoad(holder);
             foreach (Spec spec in Specs)
             {
-                prefabs[spec.prefab] = Build(spec, materials, cart, smoke);
+                prefabs[spec.prefab] = Build(spec, Placement.IsVehicle(spec.prefab) ? moving : materials, cart, smoke);
             }
             RailPlugin.Log.LogInfo($"rail pieces built: {string.Join(", ", prefabs.Keys)}");
             return true;
@@ -115,6 +121,10 @@ namespace Blackforge
             visual.transform.SetParent(root.transform, false);
             visual.AddComponent<MeshFilter>().sharedMesh = model.mesh;
             visual.AddComponent<MeshRenderer>().sharedMaterials = model.slots.Select(slot => materials[slot]).ToArray();
+            if (Placement.IsVehicle(spec.prefab))
+            {
+                visual.AddComponent<TrainShape>();
+            }
             // Box colliders, one per model part. The game places a piece by its
             // convex colliders and skips a concave mesh collider, so a mesh
             // collider alone puts the ghost far off the cursor.
@@ -219,6 +229,39 @@ namespace Blackforge
                 }
             }
             return root;
+        }
+
+        private static readonly string[] ShaderProperties = { "_MoveableObject", "_TriplanarLocalPos", "_TriplanarMap", "_ValueNoise", "_ValueNoiseVertex", "_RippleDistance", "_RippleFreq" };
+
+        private static Material Moveable(Material source)
+        {
+            Material copy = new Material(source) { name = source.name + " moving" };
+            // Like the vanilla cart: a moving object, with no vertex bend from the
+            // shader. The color noise stays, the cart keeps it too.
+            Set(copy, "_MoveableObject", 1f);
+            Set(copy, "_TriplanarLocalPos", 1f);
+            Set(copy, "_ValueNoiseVertex", 0f);
+            Set(copy, "_RippleDistance", 0f);
+            return copy;
+        }
+
+        private static void Set(Material material, string property, float value)
+        {
+            if (material.HasProperty(property))
+            {
+                material.SetFloat(property, value);
+            }
+        }
+
+        // What the vanilla cart and a vanilla wall set in the piece shader.
+        private static void LogShader(GameObject cart, Material wall)
+        {
+            IEnumerable<Material> cartMaterials = cart != null ? cart.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials).Where(m => m != null).Distinct() : Enumerable.Empty<Material>();
+            foreach (Material material in cartMaterials.Append(wall))
+            {
+                string values = string.Join(", ", ShaderProperties.Select(p => material.HasProperty(p) ? $"{p} {material.GetFloat(p):0.###}" : $"{p} none"));
+                RailPlugin.Log.LogInfo($"shader of {material.name} ({material.shader.name}): {values}");
+            }
         }
 
         // The costs need the item database, so they are set when the pieces

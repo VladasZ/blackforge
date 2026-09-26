@@ -23,7 +23,7 @@ namespace Blackforge
     // port in it is only a lobby label, so a button finds its PlayFab lobby by
     // the address and the server name. Then it queues a join to that host, the
     // same queue a Steam invite fills, and the game shows character select.
-    [BepInPlugin("xyz.vladas.blackforge.join", "Blackforge Join", "4.2.0")]
+    [BepInPlugin("xyz.vladas.blackforge.join", "Blackforge Join", "4.3.0")]
     public class JoinPlugin : BaseUnityPlugin
     {
         private const string ListFile = "servers.json";
@@ -101,6 +101,14 @@ namespace Blackforge
             catch (Exception error)
             {
                 log.LogError($"connection reports are off, a patch failed: {error}");
+            }
+            try
+            {
+                Rejoin.Patch(harmony, log);
+            }
+            catch (Exception error)
+            {
+                log.LogError($"the rejoin guard is off, a patch failed: {error}");
             }
             // Reports that waited for the app go out with this start.
             if (bridgePort != null)

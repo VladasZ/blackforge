@@ -168,6 +168,45 @@ local export of the game, never from the repo:
 `BLACKFORGE_EXPORT` and `BLACKFORGE_TEXTURES` point elsewhere. The preview
 only comes close to the game, the final look is judged in the game.
 
+## The piece shader bends every vertex
+
+Every vanilla building material uses the game's `Piece` shader. Its Value
+Noise section, `_ValueNoise` for the strength, `_RippleDistance` for the size,
+`_RippleFreq` for the frequency and `_ValueNoiseVertex` for the type, bends
+each vertex by a noise read from its position in the world. That is the
+stylistic, handmade look of Valheim: no two placed pieces look the same,
+never the ideal model. The shader properties are in the local AssetRipper
+export, `Shaders/Piece.json`.
+
+The rail pieces use the vanilla materials, so they get the bend too. For
+track and stations that is wanted.
+
+A locomotive or wagon moves through the world, so the noise under each vertex
+changes every step and the whole body wobbles while it drives. That is the
+warp players see on a moving train. It is not timing or ownership.
+
+The shader has a toggle for this, `_MoveableObject`, "Non-Static Object", and
+`_TriplanarLocalPos`, "Triplanar Uses Local Position".
+
+The plugin logs the values at load, `shader of ...`. The vanilla cart uses
+`_MoveableObject` 1, `_ValueNoiseVertex` 0 and `_RippleDistance` 0, so the
+shader does not bend it at all. A wall uses 0, 1 and 0.03.
+
+The locomotive and wagon get copies of the three materials with the cart.s
+values. `TrainShape` bakes a bend of up to 3 cm, like the ripple of a wall,
+into its own copy of the mesh of each placed train, seeded from its id. So
+every train looks a little different and keeps its shape while it moves.
+Not yet seen in the game.
+
+Still open:
+
+- Three earlier tries at the warp guessed wrong and are still in the code:
+  movement in the physics step with an interpolated kinematic body in
+  `RailBody` and `Simulation.FixedUpdate`, speed prediction for trains another
+  machine moves, and a client that takes over trains the server moves within
+  80 m. Check each against the material fix and remove what is not needed.
+  The physics step change is not committed.
+
 ## Things the game version changed
 
 - The build menu of Valheim 1.0 groups pieces by `Piece.m_usage`, the usage

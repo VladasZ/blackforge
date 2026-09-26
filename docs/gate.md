@@ -38,6 +38,28 @@ handshake was received from the server" in tiny text. For a join through a
 button the plugin puts one short line in place of it, that the server still
 holds the last connection and to wait 2 minutes.
 
+The cause is in the PlayFab socket of the game. A new game joins the party
+again, and the server resumes the held socket, logged as `Keep socket for
+playfab/...` and `Resume TX`, with the message numbers of the old game. The
+server acks with the old count, the new game closes its socket on an ack for
+a message it never sent, and the server logs PlayFab error `4098`, an invalid
+handle. The game has a check for a restarted game session in
+`CheckReestablishConnection`, but it only runs after `m_didRecover`, which
+nothing sets in 1.0.
+
+Two small patches fix it, not yet on Durka and Arkham Asylum:
+
+- `assets/status/Rejoin.cs`: when a held server socket gets message 0 of the
+  internal type, the first message of every game session, the socket starts
+  over. A connection that resumes after a network blip goes on with its old
+  numbers and never sends that message again, so it still resumes. The log
+  line is `a new game of playfab/... joins on the socket the server still
+  holds, it starts over`.
+- `assets/join/Rejoin.cs`: in the first 30 seconds of a connection the client
+  ignores an ack for messages it never sent, logged as `... from the
+  connection the server still holds, ignored`, so the server gets to see that
+  first message.
+
 Every failed join and every drop also sends a report with the game logs to
 the backend, see `reports.md`.
 

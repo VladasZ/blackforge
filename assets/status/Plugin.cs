@@ -32,7 +32,7 @@ namespace Blackforge
     //
     // A competitive server also checks what every player carries, see
     // Competitive.cs.
-    [BepInPlugin("xyz.vladas.blackforge.status", "Blackforge Server", "3.0.0")]
+    [BepInPlugin("xyz.vladas.blackforge.status", "Blackforge Server", "3.1.0")]
     public class StatusPlugin : BaseUnityPlugin
     {
         private const float Interval = 2f;
@@ -101,6 +101,15 @@ namespace Blackforge
             {
                 Stop($"the gate did not patch the game: {error}");
                 return;
+            }
+            // Only a quicker rejoin, the gate works without it.
+            try
+            {
+                Rejoin.Patch(new Harmony(Info.Metadata.GUID + ".rejoin"), Logger);
+            }
+            catch (Exception error)
+            {
+                Logger.LogWarning($"the rejoin fix is off, a patch failed: {error}");
             }
             Logger.LogInfo($"the gate asks {gateUrl} about every join");
         }

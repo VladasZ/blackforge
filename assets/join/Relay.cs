@@ -145,9 +145,10 @@ namespace Blackforge
             Note(text);
         }
 
-        private static void CheckAck(ZPlayFabSocket __instance, uint msgId)
+        private static void CheckAck(ZPlayFabSocket __instance, uint msgId, bool __runOriginal)
         {
-            if (!__instance.m_isClient)
+            // Rejoin skips an old ack in the first seconds and logs it itself.
+            if (!__instance.m_isClient || !__runOriginal)
             {
                 return;
             }
