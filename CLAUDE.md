@@ -31,20 +31,35 @@ only cut after the change was seen working for real, never on tests alone.
   the tag, with what is unverified. The user decides, never tag past it.
 - "deploy all" or "release" is not permission to skip this.
 
-## Every release goes through a throwaway server first
+## A throwaway server for changes that meet a server
 
-No release tag and no change to the mods of Durka or Arkham Asylum without a
-test on a new throwaway server first. The Sailing mod shipped in v0.1.27 and
-went on both servers, then refused to load next to Valheim Plus. A throwaway
-server would have shown it in a minute.
+A change that meets the game servers is tested on a new throwaway server
+before it reaches Durka or Arkham Asylum, or goes out in a release tag. The
+Sailing mod shipped in v0.1.27 and went on both servers, then refused to load
+next to Valheim Plus. A throwaway server would have shown it in a minute.
 
-- Start a new throwaway server for every release, never reuse an old one and
-  never test on Durka or Arkham Asylum. The recipe is in `docs/status.md`. Give
-  it the exact mods and versions of the real servers plus the change.
+It meets a server when it changes any of these:
+
+- the mods or versions in the composes of the servers,
+- `required.toml` or any other list that puts a mod into every profile,
+- the server status plugin, the join plugin, the gate, competitive servers,
+  or anything else on the path of a join,
+- the mods a player loads next to the server mods.
+
+A change that stays in the app or in the client game, like the Cmd+Q plugin,
+needs no server. The rules above are enough: seen working in the running app
+and game.
+
+The test:
+
+- Start a new throwaway server, never reuse an old one and never test on
+  Durka or Arkham Asylum. The recipe is in `docs/status.md`. Give it the exact
+  mods and versions of the real servers plus the change.
 - Read its BepInEx log. Every mod must have its `Loading [...]` line and no
   `Could not load` line, no errors from the change.
 - Join it with the app built from the release commit, and check the change
   in the game, the way a player uses it.
 - Stop and remove the throwaway server when done.
-- No tag until all of this passed. The user saying "release" or "tag now" does
-  not skip it. Name the step that did not run and wait.
+- When the change meets a server, no tag and no compose push until this
+  passed. The user saying "release" or "tag now" does not skip it. Name the
+  step that did not run and wait.
