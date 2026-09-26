@@ -19,7 +19,7 @@ use crate::{
     achievements, emoji,
     error::{Error, IoContext, Result},
     game::{GameDef, GameInstall, Target},
-    hugin, join, quit, steam,
+    hugin, join, quit, rail, steam,
     util::exists,
 };
 
@@ -302,6 +302,7 @@ pub async fn prepare(plan: &LaunchPlan, profile_dir: &Path) -> Result<()> {
         join::refresh_list(profile_dir).await?;
         hugin::apply(profile_dir).await?;
         emoji::apply(profile_dir).await?;
+        rail::apply(profile_dir).await?;
         if plugins.quit {
             quit::apply(profile_dir).await?;
         }

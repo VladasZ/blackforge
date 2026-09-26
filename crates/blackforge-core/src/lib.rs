@@ -28,6 +28,7 @@ pub mod profile;
 pub mod progress;
 pub mod quit;
 pub mod r2;
+pub mod rail;
 pub mod required;
 pub mod resolve;
 mod served_list;

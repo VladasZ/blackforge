@@ -5,6 +5,7 @@ Read `docs/join.md` before touching the join button plugin.
 Read `docs/hugin.md` before touching the plugin that keeps the ravens away.
 Read `docs/quit.md` before touching the plugin that keeps Cmd+Q from closing the game.
 Read `docs/emoji.md` before touching the chat emojis plugin.
+Read `docs/rail.md` before touching the rail plugin or its models.
 Read `docs/status.md` before touching the server status plugin.
 Read `docs/gate.md` before touching the join codes, members or the server gate.
 Read `docs/competitive.md` before touching competitive servers or `tiers.toml`.
@@ -20,8 +21,20 @@ only cut after the change was seen working for real, never on tests alone.
 - Start the local app only with `make run`. It builds and runs with the
   Sentry setup from Infisical, like a shipped build. Never start
   `target/release/blackforge-gui` or `cargo run` by hand.
-- Start it once and leave the rest to the user. Never wait on it in a loop
-  or poll its output.
+- The user starts `make run` and the game. Never start it yourself unless
+  asked, and never wait on it in a loop or poll its output.
+- While the user runs the app, watch its logs live and report every error
+  and warning at once, without being asked. Watch both:
+  - the app log, the newest `blackforge-gui-*.log` in
+    `~/Library/Logs/blackforge-gui`, a new file per start of the app,
+  - the game log, `BepInEx/LogOutput.log` in the profile, rewritten at
+    every start of the game.
+  Use a monitor that follows the file, like `tail -F` through `grep` for
+  `ERROR`, `WARN`, `Error`, `Warning`, `Exception` and `Could not load`,
+  and the load lines of the changed plugin. Rearm it when it expires.
+  `DllNotFoundException: AppleCoreNativeMac` comes from the game's own Game
+  Center plugin on a Mac, not from a Blackforge plugin. It shows at every
+  start and the game goes on.
 - Check every changed behavior in the running app and the running game, the
   way a player uses it. For a plugin change, read `BepInEx/LogOutput.log` of
   the profile for its load line, errors and warnings, and look at the menu.

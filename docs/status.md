@@ -55,7 +55,7 @@ then names the reason. A gate that is off must never run.
   `valheim_status_age_seconds` is its age, -1 when it is missing.
 
 The plugin is never installed on a game client. The app installs only the join,
-no ravens, emojis and achievements plugins there.
+no ravens, quit, emojis, rail and achievements plugins there.
 
 ## Changing the plugin
 
@@ -82,3 +82,20 @@ Test a change on a throwaway server first, never on Durka. A plain
 `BLACKFORGE_STATUS_FILE` and the two gate variables set, shows the file within a
 minute of the world load. Its server name must be one registered on the Servers
 page, a code is for one server only.
+
+## The test server
+
+`Test` is a third Valheim server, next to Durka and Arkham Asylum, for trying
+changes with players before they go on the real servers. Its stack is
+`games/valheim-test` in the `local` repo, deployment `valheim-test`. It runs the
+same image, mods, gate and status plugin as Durka, on its own world
+`TestWorld`, with no metrics port. It also runs the rail plugin, see
+`rail.md`, installed by its hook like the status plugin, from
+`BLACKFORGE_RAIL_URL` and `BLACKFORGE_RAIL_SHA256`.
+
+It may be restarted, redeployed or wiped at any time, also with players on it.
+Rule 1 of the beekeeper skill does not cover it. It is registered on the
+Servers page with the join address, so it has a join button in the game like
+the others.
+
+It does not replace the throwaway server of a release, see `CLAUDE.md`.

@@ -46,6 +46,10 @@ client on macOS only.
 sheets and `emojis.json`, see `emoji.md`. It is written before every start of
 the Valheim client too.
 
+`BepInEx/plugins/blackforge-rail` is the railroad plugin, see `rail.md`. Its
+models are inside the dll. It is written before every start of the Valheim
+client too.
+
 `BepInEx/plugins/blackforge` is the app's own achievements plugin. It is not a
 package and is not in the lock.
 

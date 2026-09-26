@@ -49,3 +49,12 @@ quit-plugin:
 emoji-plugin:
 	docker run --rm -v "$(CURDIR)/assets:/src" -v "$(VALHEIM_MANAGED):/managed:ro" mcr.microsoft.com/dotnet/sdk:10.0 sh -c \
 		'mkdir -p /build/emoji && cp /src/emoji/*.cs /src/emoji/BlackforgeEmoji.csproj /build/emoji/ && cd /build/emoji && dotnet build -c Release -o /out -p:ValheimManaged=/managed && cp /out/BlackforgeEmoji.dll /src/emoji/'
+
+# The rail plugin embeds the meshes and icons that `make rail-models` writes.
+rail-plugin:
+	docker run --rm -v "$(CURDIR)/assets:/src" -v "$(VALHEIM_MANAGED):/managed:ro" mcr.microsoft.com/dotnet/sdk:10.0 sh -c \
+		'mkdir -p /build/rail && cp -r /src/rail/*.cs /src/rail/BlackforgeRail.csproj /src/rail/meshes /src/rail/icons /build/rail/ && cd /build/rail && dotnet build -c Release -o /out -p:ValheimManaged=/managed && cp /out/BlackforgeRail.dll /src/rail/'
+
+# Writes the rail meshes and hammer icons from the Blender scripts.
+rail-models:
+	cd assets/rail/models && blender -b --python export.py

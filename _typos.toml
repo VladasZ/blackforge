@@ -1,0 +1,3 @@
+# Names the game itself spells this way, a plugin must use them as they are.
+[default.extend-words]
+Controlls = "Controlls"

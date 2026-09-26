@@ -1,10 +1,11 @@
 # Join buttons
 
 The Valheim main menu gets a big join button per server in the top left corner,
-like "Join Durka" and "Join Arkham Asylum". A click takes the player to character
-select. After Start the game joins that server. There is no password. A click
-gets the rules of the server from the running app, Start gets a one time code,
-and the server lets in only a code from blackforge, see `gate.md`.
+labeled with just the server name, like "Durka" and "Arkham Asylum". A click
+takes the player to character select. After Start the game joins that server.
+There is no password. A click gets the rules of the server from the running
+app, Start gets a one time code, and the server lets in only a code from
+blackforge, see `gate.md`.
 
 ## The parts
 

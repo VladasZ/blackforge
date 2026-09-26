@@ -303,7 +303,7 @@ namespace Blackforge
             rects.Add(rect);
 
             TMP_Text text = copy.GetComponentInChildren<TMP_Text>(true);
-            text.text = "Join " + server.name;
+            text.text = server.name;
             text.enableAutoSizing = false;
             text.fontSize = FontSize;
 
