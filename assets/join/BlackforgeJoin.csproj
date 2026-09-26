@@ -29,6 +29,9 @@
     <Reference Include="UnityEngine.UnityWebRequestModule" HintPath="$(ValheimManaged)\UnityEngine.UnityWebRequestModule.dll" Private="false" />
     <Reference Include="Newtonsoft.Json" HintPath="$(ValheimManaged)\Newtonsoft.Json.dll" Private="false" />
     <Reference Include="Unity.TextMeshPro" HintPath="$(ValheimManaged)\Unity.TextMeshPro.dll" Private="false" />
+    <Reference Include="PlayFabParty" HintPath="$(ValheimManaged)\PlayFabParty.dll" Private="false" />
+    <Reference Include="PlayFab" HintPath="$(ValheimManaged)\PlayFab.dll" Private="false" />
+    <Reference Include="Splatform" HintPath="$(ValheimManaged)\Splatform.dll" Private="false" />
   </ItemGroup>
 
   <ItemGroup>

@@ -34,6 +34,11 @@ impl DataDir {
         &self.root
     }
 
+    /// Connection reports the server did not take yet, see `docs/reports.md`.
+    pub fn reports_dir(&self) -> PathBuf {
+        self.root.join("reports")
+    }
+
     pub fn cache_dir(&self) -> PathBuf {
         self.root.join("cache")
     }

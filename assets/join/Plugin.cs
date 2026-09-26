@@ -23,7 +23,7 @@ namespace Blackforge
     // port in it is only a lobby label, so a button finds its PlayFab lobby by
     // the address and the server name. Then it queues a join to that host, the
     // same queue a Steam invite fills, and the game shows character select.
-    [BepInPlugin("xyz.vladas.blackforge.join", "Blackforge Join", "4.1.0")]
+    [BepInPlugin("xyz.vladas.blackforge.join", "Blackforge Join", "4.2.0")]
     public class JoinPlugin : BaseUnityPlugin
     {
         private const string ListFile = "servers.json";
@@ -92,15 +92,20 @@ namespace Blackforge
             Harmony harmony = new Harmony(Info.Metadata.GUID);
             // The tags must hold in every world, also without any server.
             Competitive.Patch(harmony, log);
-            // Reports are shipped untested in the game, a failed patch must
-            // not cost the join buttons.
+            // A failed patch of the reports must not cost the join buttons.
             try
             {
                 Report.Patch(harmony, log, Info.Metadata.Version.ToString());
+                Relay.Patch(harmony, log);
             }
             catch (Exception error)
             {
                 log.LogError($"connection reports are off, a patch failed: {error}");
+            }
+            // Reports that waited for the app go out with this start.
+            if (bridgePort != null)
+            {
+                StartCoroutine(Report.SendUnsent());
             }
             harmony.Patch(
                 AccessTools.Method(typeof(ZNet), nameof(ZNet.OnNewConnection)),

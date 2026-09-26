@@ -26,7 +26,7 @@ use hilen_server::{
 use sqlx::{PgPool, types::Uuid};
 
 use crate::{
-    routes::{require_admin, require_username, user_named},
+    routes::{require_admin, require_username, user_named, username_of},
     tiers,
 };
 
@@ -150,6 +150,7 @@ WHERE s.id = $1",
     .fetch_optional(db)
     .await?;
     let (name, owner) = exists.ok_or(AppError::NotFound)?;
+    info!("{} {} is no member of {name}", who(db, user).await, user.id);
     Err(AppError::BadRequest(format!(
         "you are not a member of {name}, ask {owner} to add you"
     )))
@@ -163,7 +164,8 @@ async fn rules(
     State(db): State<PgPool>,
     Path(id): Path<String>,
 ) -> Result<Json<JoinRules>, AppError> {
-    let (_, (_, _, game, competitive, world, dead)) = allowed_server(&db, &user, &id).await?;
+    let (_, (name, _, game, competitive, world, dead)) = allowed_server(&db, &user, &id).await?;
+    info!("rules of {name} for {} {}", who(&db, &user).await, user.id);
     let Rules {
         competitive,
         forbidden,
@@ -184,7 +186,11 @@ async fn join(
     Path(id): Path<String>,
 ) -> Result<Json<JoinCode>, AppError> {
     let (id, (name, owner, ..)) = allowed_server(&db, &user, &id).await?;
-    info!("join code for {name} of {owner}");
+    info!(
+        "join code for {name} of {owner} to {} {}",
+        who(&db, &user).await,
+        user.id
+    );
     sqlx::query("DELETE FROM join_codes WHERE expires_at < now()")
         .execute(&db)
         .await?;
@@ -205,6 +211,15 @@ SELECT code FROM made",
     .fetch_one(&db)
     .await?;
     Ok(Json(JoinCode { code }))
+}
+
+/// The username for a log line, empty when the lookup fails.
+async fn who(db: &PgPool, user: &User) -> String {
+    username_of(db, user.id)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default()
 }
 
 fn bearer(headers: &HeaderMap) -> Option<&str> {

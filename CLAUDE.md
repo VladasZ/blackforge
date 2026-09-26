@@ -14,6 +14,11 @@ A release tag ships to every player through the self updater, so a release is
 only cut after the change was seen working for real, never on tests alone.
 
 - Run `make check`, then build the app and start the game from that build.
+- Start the local app only with `make run`. It builds and runs with the
+  Sentry setup from Infisical, like a shipped build. Never start
+  `target/release/blackforge-gui` or `cargo run` by hand.
+- Start it once and leave the rest to the user. Never wait on it in a loop
+  or poll its output.
 - Check every changed behavior in the running app and the running game, the
   way a player uses it. For a plugin change, read `BepInEx/LogOutput.log` of
   the profile for its load line, errors and warnings, and look at the menu.

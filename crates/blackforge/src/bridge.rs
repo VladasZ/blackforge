@@ -4,12 +4,12 @@
 //! and hands them to the game. It listens on 127.0.0.1 only, and a request
 //! must carry the key this app gave the game at its start, see `docs/gate.md`.
 
-use std::{sync::Mutex, thread};
+use std::{fs, sync::Mutex, thread, time::Instant};
 
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use blackforge_api::report::ConnectionReport;
-use blackforge_core::Error;
+use blackforge_core::{Error, paths::DataDir};
 use constant_time_eq::constant_time_eq;
 use tiny_http::{Method, Request, Response, Server};
 use tokio::runtime::Builder;
@@ -20,6 +20,8 @@ const KEY_HEADER: &str = "X-Blackforge-Key";
 const RULES_PATH: &str = "/rules/";
 const JOIN_PATH: &str = "/join/";
 const REPORT_PATH: &str = "/report";
+/// Reports the server did not take wait in the data folder, the newest ones.
+const KEEP_REPORTS: usize = 50;
 const SIGN_IN: &str = "Sign in to Blackforge to join";
 const UNREACHABLE: &str = "Blackforge is not reachable, try again later";
 const STARTED_AGAIN: &str = "Blackforge started Valheim again after this game opened, so this game cannot join. Close Valheim and press Play in Blackforge.";
@@ -70,11 +72,21 @@ fn serve(server: &Server) {
         }
     };
     for mut request in server.incoming_requests() {
-        let (status, text) = if request.url() == REPORT_PATH {
+        let started = Instant::now();
+        let url = request.url().to_owned();
+        let (status, text) = if url == REPORT_PATH {
             report(&mut request)
         } else {
             runtime.block_on(answer(&request))
         };
+        // Every request of the game, a join problem starts here. A 200 of a
+        // join door carries the code, so only a refusal logs its text.
+        let ms = started.elapsed().as_millis();
+        if status < 300 {
+            log::info!("the game asked {url}: {status} in {ms} ms");
+        } else {
+            log::warn!("the game asked {url}: {status} in {ms} ms, {text}");
+        }
         let response = Response::from_string(text).with_status_code(status);
         if let Err(error) = request.respond(response) {
             log::warn!("the join bridge did not answer: {error}");
@@ -121,47 +133,113 @@ fn report(request: &mut Request) -> (u16, String) {
         Err(error) => return (400, format!("no report: {error}")),
     };
     env!("CARGO_PKG_VERSION").clone_into(&mut report.app_version);
+    report.app_log = app_log();
     report.trim();
     log::info!(
-        "connection report: {} {} after {:.1}s, {}",
+        "connection report: {} {} {} after {:.1}s, {}",
         report.server,
+        report.character,
         report.status,
         report.seconds,
         report.message
     );
-    if !social::signed_in() {
-        log::warn!("the connection report is not sent, nobody is signed in");
-        return (401, SIGN_IN.to_owned());
-    }
-    let client = match social::client() {
-        Ok(client) => client,
-        Err(error) => {
-            log::warn!("no client for the connection report: {error:#}");
-            return (500, UNREACHABLE.to_owned());
-        }
-    };
     let sent = thread::Builder::new()
         .name("connection-report".to_owned())
-        .spawn(move || {
-            let result = Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(anyhow::Error::from)
-                .and_then(|runtime| {
-                    runtime
-                        .block_on(client.send_report(&report))
-                        .map_err(anyhow::Error::from)
-                });
-            if let Err(error) = result {
-                log::warn!("the connection report did not reach the server: {error:#}");
-            }
-        });
+        .spawn(move || deliver(&report));
     match sent {
-        Ok(_) => (202, "sent".to_owned()),
+        Ok(_) => (202, "taken".to_owned()),
         Err(error) => {
             log::warn!("the connection report did not start: {error}");
             (500, UNREACHABLE.to_owned())
         }
+    }
+}
+
+/// Sends a report, then the kept ones. A report the server did not take
+/// waits in the data folder for the next one that gets through.
+fn deliver(report: &ConnectionReport) {
+    let result = send(report);
+    if let Err(error) = result {
+        log::warn!("the connection report did not reach the server, it waits: {error:#}");
+        keep(report);
+        return;
+    }
+    log::info!("the connection report reached the server");
+    let Ok(dir) = DataDir::locate().map(|data| data.reports_dir()) else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return;
+    };
+    let mut files: Vec<_> = entries
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .collect();
+    files.sort();
+    for file in files {
+        let kept = fs::read_to_string(&file)
+            .map_err(anyhow::Error::from)
+            .and_then(|text| Ok(serde_json::from_str::<ConnectionReport>(&text)?));
+        let kept = match kept {
+            Ok(kept) => kept,
+            Err(error) => {
+                log::warn!("{} did not read, it is dropped: {error:#}", file.display());
+                let _ = fs::remove_file(&file);
+                continue;
+            }
+        };
+        if let Err(error) = send(&kept) {
+            log::warn!("a kept connection report still did not reach the server: {error:#}");
+            return;
+        }
+        match fs::remove_file(&file) {
+            Ok(()) => log::info!("sent the kept connection report {}", file.display()),
+            Err(error) => log::warn!("{} was sent but not deleted: {error}", file.display()),
+        }
+    }
+}
+
+fn send(report: &ConnectionReport) -> Result<()> {
+    if !social::signed_in() {
+        return Err(anyhow!("nobody is signed in"));
+    }
+    let client = social::client()?;
+    let runtime = Builder::new_current_thread().enable_all().build()?;
+    runtime.block_on(client.send_report(report))?;
+    Ok(())
+}
+
+/// The newest `KEEP_REPORTS` wait, an older one is dropped.
+fn keep(report: &ConnectionReport) {
+    let result = DataDir::locate()
+        .map_err(anyhow::Error::from)
+        .and_then(|data| {
+            let dir = data.reports_dir();
+            fs::create_dir_all(&dir)?;
+            let mut kept: Vec<_> = fs::read_dir(&dir)?
+                .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+                .collect();
+            kept.sort();
+            for old in kept.iter().rev().skip(KEEP_REPORTS - 1) {
+                fs::remove_file(old)?;
+            }
+            let name = format!("{}.json", chrono::Utc::now().format("%Y%m%d-%H%M%S-%3f"));
+            fs::write(dir.join(name), serde_json::to_vec(report)?)?;
+            Ok(())
+        });
+    if let Err(error) = result {
+        log::warn!("the connection report is lost, it did not save: {error:#}");
+    }
+}
+
+/// The log file of this run of the app, the trim keeps its newest part.
+fn app_log() -> String {
+    let Some(path) = hilen::log_file_path() else {
+        return "no app log file".to_owned();
+    };
+    match fs::read(&path) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Err(error) => format!("{} did not read: {error}", path.display()),
     }
 }
 

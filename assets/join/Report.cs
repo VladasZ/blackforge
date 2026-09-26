@@ -26,6 +26,9 @@ namespace Blackforge
         private const int TrailLines = 200;
         // The menu can show the same error twice in a row.
         private const float RepeatSeconds = 5f;
+        // Reports the app did not take wait here, under the BepInEx folder.
+        private const string UnsentFolder = "blackforge-reports";
+        private const int KeepFiles = 50;
 
         // The body of POST /report, `ConnectionReport` of blackforge-api.
         private class Body
@@ -39,7 +42,12 @@ namespace Blackforge
             public string game_version = "";
             public string plugin_version = "";
             public string os = "";
+            public string character = "";
+            public string playfab_id = "";
+            public string platform_id = "";
+            public List<string> mods = new List<string>();
             public List<string> trail = new List<string>();
+            public List<string> traffic = new List<string>();
             public string log = "";
         }
 
@@ -49,6 +57,8 @@ namespace Blackforge
         private static float started = -1f;
         private static ZNet.ConnectionStatus lastStatus = ZNet.ConnectionStatus.None;
         private static bool inWorld;
+        // The character of the last join, from character select or the world.
+        private static string character = "";
         private static string lastSent;
         private static float lastSentAt = -100f;
 
@@ -99,12 +109,16 @@ namespace Blackforge
             if (!inWorld && status == ZNet.ConnectionStatus.Connected && Player.m_localPlayer != null)
             {
                 inWorld = true;
-                Step("in the world");
+                character = Player.m_localPlayer.GetPlayerName() ?? character;
+                Step($"in the world as {character}");
             }
         }
 
         private static void OnConnect(string remotePlayerId)
         {
+            // The menu is gone at the connect, the game holds the profile.
+            character = Game.instance?.GetPlayerProfile()?.GetName() ?? "";
+            Step($"character {character}");
             Step($"connect to playfab host {remotePlayerId}");
         }
 
@@ -145,9 +159,14 @@ namespace Blackforge
                 game_version = Version.GetVersionString(),
                 plugin_version = pluginVersion,
                 os = SystemInfo.operatingSystem,
+                character = character,
+                playfab_id = PlayFabId(),
+                platform_id = PlatformId(),
+                mods = Mods(),
                 trail = new List<string>(trail),
+                traffic = Relay.Traffic(),
             };
-            log.LogInfo($"connection report: {body.server} {status} after {body.seconds:0.0}s, {body.message}");
+            log.LogInfo($"connection report: {body.server} {body.character} {status} after {body.seconds:0.0}s, {body.message}");
             // The next join starts clean, an in world drop is already known.
             inWorld = false;
             JoinPlugin.Run(Send(body));
@@ -160,26 +179,145 @@ namespace Blackforge
             yield return null;
             body.log = Tail("BepInEx/LogOutput.log", Path.Combine(Paths.BepInExRootPath, "LogOutput.log"), BepInExTail)
                 + Tail("Player.log", Application.consoleLogPath, PlayerTail);
+            string json = JsonConvert.SerializeObject(body);
+            bool sent = false;
+            yield return Post(json, ok => sent = ok);
+            if (!sent)
+            {
+                Keep(json);
+                yield break;
+            }
+            yield return SendUnsent();
+        }
+
+        // Reports the app did not take wait on disk and go out with the next
+        // report that gets through, or at the next start from the app.
+        public static IEnumerator SendUnsent()
+        {
+            string[] files;
+            try
+            {
+                files = Directory.Exists(UnsentDir) ? Directory.GetFiles(UnsentDir, "*.json") : new string[0];
+            }
+            catch (Exception error)
+            {
+                log.LogWarning($"the unsent reports did not list: {error.Message}");
+                yield break;
+            }
+            Array.Sort(files);
+            foreach (string file in files)
+            {
+                string json;
+                try
+                {
+                    json = File.ReadAllText(file);
+                }
+                catch (Exception error)
+                {
+                    log.LogWarning($"{file} did not read: {error.Message}");
+                    continue;
+                }
+                bool sent = false;
+                yield return Post(json, ok => sent = ok);
+                if (!sent)
+                {
+                    yield break;
+                }
+                try
+                {
+                    File.Delete(file);
+                    log.LogInfo($"sent the kept report {Path.GetFileName(file)}");
+                }
+                catch (Exception error)
+                {
+                    log.LogWarning($"{file} was sent but not deleted: {error.Message}");
+                }
+            }
+        }
+
+        private static string UnsentDir => Path.Combine(Paths.BepInExRootPath, UnsentFolder);
+
+        private static void Keep(string json)
+        {
+            try
+            {
+                Directory.CreateDirectory(UnsentDir);
+                string[] kept = Directory.GetFiles(UnsentDir, "*.json");
+                Array.Sort(kept);
+                for (int i = 0; i <= kept.Length - KeepFiles; i++)
+                {
+                    File.Delete(kept[i]);
+                }
+                string file = Path.Combine(UnsentDir, $"{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}.json");
+                File.WriteAllText(file, json);
+                log.LogInfo($"the connection report waits in {file}");
+            }
+            catch (Exception error)
+            {
+                log.LogWarning($"the connection report is lost, it did not save: {error.Message}");
+            }
+        }
+
+        private static IEnumerator Post(string json, Action<bool> done)
+        {
             string url = JoinPlugin.BridgeUrl(Door);
             if (url == null)
             {
-                log.LogInfo("the connection report is not sent, the game was not started by Blackforge");
+                log.LogInfo("the connection report waits, the game was not started by Blackforge");
+                done(false);
                 yield break;
             }
-            byte[] bytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(body));
             using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
             {
-                request.uploadHandler = new UploadHandlerRaw(bytes);
+                request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
                 request.downloadHandler = new DownloadHandlerBuffer();
                 request.SetRequestHeader("Content-Type", "application/json");
                 JoinPlugin.SignRequest(request);
                 request.timeout = SendTimeout;
                 yield return request.SendWebRequest();
-                if (request.result != UnityWebRequest.Result.Success)
+                bool ok = request.result == UnityWebRequest.Result.Success;
+                if (!ok)
                 {
                     log.LogWarning($"the connection report did not reach the app: {request.responseCode} {request.error} {request.downloadHandler.text}");
                 }
+                done(ok);
             }
+        }
+
+        private static string PlayFabId()
+        {
+            try
+            {
+                return PlayFab.Party.PlayFabMultiplayerManager.Get()?.LocalPlayer?.EntityKey?.Id ?? "";
+            }
+            catch (Exception error)
+            {
+                return "unreadable: " + error.Message;
+            }
+        }
+
+        private static string PlatformId()
+        {
+            try
+            {
+                return Splatform.PlatformManager.DistributionPlatform?.LocalUser?.PlatformUserID.ToString() ?? "";
+            }
+            catch (Exception error)
+            {
+                return "unreadable: " + error.Message;
+            }
+        }
+
+        // Every plugin BepInEx loaded, with its version.
+        private static List<string> Mods()
+        {
+            List<string> mods = new List<string>();
+            foreach (BepInEx.PluginInfo plugin in BepInEx.Bootstrap.Chainloader.PluginInfos.Values)
+            {
+                mods.Add($"{plugin.Metadata.GUID} {plugin.Metadata.Name} {plugin.Metadata.Version}");
+            }
+            mods.Sort();
+            return mods;
         }
 
         // The newest part of a log file, cut at a line start. The game and

@@ -273,6 +273,15 @@ fn launch(game_dir: Option<PathBuf>) {
                 keep_achievements: settings.keep_achievements,
                 inherited: &inherited_env,
             })?;
+            // No arguments, they carry the key of the join bridge.
+            log::info!(
+                "the game starts: {} in {}, handed to {:?}, profile {}, client plugins {}",
+                plan.program.display(),
+                plan.cwd.display(),
+                plan.handed_to,
+                profile.dir().display(),
+                plan.client_plugins
+            );
             let child = spawn_game(&plan, profile.dir()).await?;
             drop(held);
             let label = format!("{} {}", game.display_name, manifest.target);

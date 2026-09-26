@@ -38,7 +38,9 @@ async fn add(
     report.trim();
     let username = username_of(&db, user.id).await?.unwrap_or_default();
     info!(
-        "connection report from {username}: {} {} after {:.1}s{}, {}",
+        "connection report from {username} {}, character {}: {} {} after {:.1}s{}, {}",
+        user.id,
+        report.character,
         report.server,
         report.status,
         report.seconds,
@@ -47,8 +49,9 @@ async fn add(
     );
     let json = to_string(&report).map_err(|error| AppError::BadRequest(error.to_string()))?;
     sqlx::query(
-        r"INSERT INTO connection_reports (user_id, server, status, message, in_world, seconds, report)
-VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)",
+        r"INSERT INTO connection_reports
+    (user_id, server, status, message, in_world, seconds, report, character)
+VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)",
     )
     .bind(user.id)
     .bind(&report.server)
@@ -57,6 +60,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)",
     .bind(report.in_world)
     .bind(report.seconds)
     .bind(json)
+    .bind(&report.character)
     .execute(&db)
     .await?;
     sqlx::query("DELETE FROM connection_reports WHERE created_at < now() - $1 * interval '1 day'")
@@ -74,9 +78,12 @@ VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)",
     Ok(Json(()))
 }
 
+/// The columns of one list row, in the order of the select.
 type ListRow = (
     i64,
+    String,
     Option<String>,
+    String,
     String,
     String,
     String,
@@ -88,9 +95,9 @@ type ListRow = (
 async fn list(user: User, State(db): State<PgPool>) -> Result<Json<Vec<ReportRow>>, AppError> {
     require_admin(&db, &user, "reads connection reports").await?;
     let rows: Vec<ListRow> = sqlx::query_as(
-        r#"SELECT r.id, p.username,
+        r#"SELECT r.id, r.user_id::text, p.username,
     to_char(r.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-    r.server, r.status, r.message, r.in_world, r.seconds
+    r.server, r.character, r.status, r.message, r.in_world, r.seconds
 FROM connection_reports r LEFT JOIN profiles p ON p.user_id = r.user_id
 ORDER BY r.id DESC LIMIT $1"#,
     )
@@ -100,17 +107,28 @@ ORDER BY r.id DESC LIMIT $1"#,
     Ok(Json(
         rows.into_iter()
             .map(
-                |(id, username, created_at, server, status, message, in_world, seconds)| {
-                    ReportRow {
-                        id,
-                        username: username.unwrap_or_default(),
-                        created_at,
-                        server,
-                        status,
-                        message,
-                        in_world,
-                        seconds,
-                    }
+                |(
+                    id,
+                    user_id,
+                    username,
+                    created_at,
+                    server,
+                    character,
+                    status,
+                    message,
+                    in_world,
+                    seconds,
+                )| ReportRow {
+                    id,
+                    user_id,
+                    username: username.unwrap_or_default(),
+                    created_at,
+                    server,
+                    character,
+                    status,
+                    message,
+                    in_world,
+                    seconds,
                 },
             )
             .collect(),
@@ -123,8 +141,8 @@ async fn one(
     Path(id): Path<i64>,
 ) -> Result<Json<StoredReport>, AppError> {
     require_admin(&db, &user, "reads connection reports").await?;
-    let row: Option<(i64, Option<String>, String, String)> = sqlx::query_as(
-        r#"SELECT r.id, p.username,
+    let row: Option<(i64, String, Option<String>, String, String)> = sqlx::query_as(
+        r#"SELECT r.id, r.user_id::text, p.username,
     to_char(r.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), r.report::text
 FROM connection_reports r LEFT JOIN profiles p ON p.user_id = r.user_id
 WHERE r.id = $1"#,
@@ -132,10 +150,11 @@ WHERE r.id = $1"#,
     .bind(id)
     .fetch_optional(&db)
     .await?;
-    let (id, username, created_at, report) = row.ok_or(AppError::NotFound)?;
+    let (id, user_id, username, created_at, report) = row.ok_or(AppError::NotFound)?;
     let report = from_str(&report).map_err(|error| AppError::BadRequest(error.to_string()))?;
     Ok(Json(StoredReport {
         id,
+        user_id,
         username: username.unwrap_or_default(),
         created_at,
         report,
