@@ -72,6 +72,7 @@ impl Installed {
             Note::None => String::new(),
             Note::Dependency => ", as a dependency".to_owned(),
             Note::Pinned(server) => format!(", pinned for {server}"),
+            Note::Required => ", required for every player".to_owned(),
             Note::Disabled => ", disabled".to_owned(),
         };
         format!("Installed {}{how}", self.version)

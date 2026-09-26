@@ -38,13 +38,18 @@ Valheim client.
 ravens away, see `hugin.md`. It is written before every start of the Valheim
 client too.
 
+`BepInEx/plugins/blackforge-emoji` is the chat emojis plugin with its sprite
+sheets and `emojis.json`, see `emoji.md`. It is written before every start of
+the Valheim client too.
+
 `BepInEx/plugins/blackforge` is the app's own achievements plugin. It is not a
 package and is not in the lock.
 
 ## Other files
 
 `cache` keeps downloaded zips. `icons` keeps mod icons. `index` keeps the
-package list from Thunderstore, and `broken.json` next to it, the list of
-broken mods from the blackforge server, fetched again after an hour. When
+package list from Thunderstore, and next to it `broken.json`, the list of
+broken mods from the blackforge server, and `required.json`, the mods every
+profile gets, see `required.md`. Both are fetched again after an hour. When
 the server cannot be reached the old copy stays in use. `sync-<account-id>.json` is the cloud sync
 baseline, see `sync.md`.

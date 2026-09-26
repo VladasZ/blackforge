@@ -16,7 +16,7 @@ use tokio::{
 };
 
 use crate::{
-    achievements,
+    achievements, emoji,
     error::{Error, IoContext, Result},
     game::{GameDef, GameInstall, Target},
     hugin, join, steam,
@@ -288,6 +288,7 @@ pub async fn prepare(plan: &LaunchPlan, profile_dir: &Path) -> Result<()> {
         join::apply(profile_dir).await?;
         join::refresh_list(profile_dir).await?;
         hugin::apply(profile_dir).await?;
+        emoji::apply(profile_dir).await?;
     }
     for name in &plan.game_files {
         let source = profile_dir.join(name);

@@ -3,7 +3,7 @@
 //! broken on this game version. Every page that lists mods shows the same
 //! three, so they are one view.
 
-use blackforge_core::manifest::ModSpec;
+use blackforge_core::{manifest::ModSpec, required::is_required};
 use hilen::{
     refs::Weak,
     ui::{Setup, ViewData, view},
@@ -23,6 +23,8 @@ pub enum Note {
     Dependency,
     /// Held at the version its server needs.
     Pinned(String),
+    /// On the required list, every profile has it.
+    Required,
     Disabled,
 }
 
@@ -31,6 +33,7 @@ impl Note {
     /// manifest does not name is there for another mod.
     pub fn of(spec: Option<&ModSpec>) -> Self {
         match spec {
+            Some(spec) if is_required(spec) => Self::Required,
             Some(spec) if !spec.enabled => Self::Disabled,
             Some(spec) if let Some(server) = spec.version.server() => {
                 Self::Pinned(server.to_owned())
@@ -45,6 +48,7 @@ impl Note {
             Self::None => None,
             Self::Dependency => Some(("pill_dependency.svg", "dependency".to_owned())),
             Self::Pinned(server) => Some(("pill_pinned.svg", format!("pinned for {server}"))),
+            Self::Required => Some(("pill_pinned.svg", "required".to_owned())),
             Self::Disabled => Some(("pill_disabled.svg", "disabled".to_owned())),
         }
     }

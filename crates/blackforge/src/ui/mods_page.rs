@@ -554,8 +554,10 @@ impl ModCell {
             self.update.set_text(format!("Update to {}", newer.version));
         }
 
-        self.enabled.set_hidden(!row.direct);
+        // The core refuses to remove or switch off a required mod.
+        let fixed = !row.direct || row.note == Note::Required;
+        self.enabled.set_hidden(fixed);
         self.enabled.set_on(row.enabled);
-        self.remove.set_hidden(!row.direct);
+        self.remove.set_hidden(fixed);
     }
 }

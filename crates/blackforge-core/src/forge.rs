@@ -17,6 +17,7 @@ use crate::{
     paths::DataDir,
     profile::{LaunchSettings, Profile, ProfileStore, game_dir_key},
     progress::Progress,
+    required::{self, is_required},
     resolve::{MissingDependency, Unlock, resolve},
     thunderstore::{FRESH_ENOUGH, PackageIndex},
 };
@@ -202,6 +203,11 @@ impl Forge {
         let game = self.game(&manifest).await?;
         let index = self.index(&game, FRESH_ENOUGH, progress).await?;
         let id = index.find(query)?.id.clone();
+        // The required list decides the version of its mods, a server or a
+        // click on Add does not move them.
+        if manifest.mods.get(&id).is_some_and(is_required) {
+            return Ok((id, LockChange::default()));
+        }
 
         let enabled = manifest.mods.get(&id).is_none_or(|spec| spec.enabled);
         manifest
@@ -218,6 +224,7 @@ impl Forge {
     pub async fn remove(&self, profile: &Profile, query: &str) -> Result<(PackageId, LockChange)> {
         let mut manifest = profile.manifest().await?;
         let id = manifest_id(&manifest, query)?;
+        refuse_required(&manifest, &id)?;
         manifest.mods.remove(&id);
         let game = self.game(&manifest).await?;
         let index = PackageIndex::cached(self.data(), &game).await?;
@@ -283,6 +290,9 @@ impl Forge {
     ) -> Result<PackageId> {
         let mut manifest = profile.manifest().await?;
         let id = manifest_id(&manifest, query)?;
+        if !enabled {
+            refuse_required(&manifest, &id)?;
+        }
         manifest.require_mut(&id)?.enabled = enabled;
         manifest.write(&profile.manifest_path()).await?;
         Ok(id)
@@ -290,7 +300,13 @@ impl Forge {
 
     /// Builds the profile tree from the lock. A package that left the lock
     /// loses its config and whatever else it wrote into the profile too.
+    ///
+    /// The required mods go into the lock first. When that fails, the game
+    /// still starts without them, a player without the mod can still join.
     pub async fn sync(&self, profile: &Profile, progress: &Progress) -> Result<SyncReport> {
+        if let Err(error) = self.apply_required(profile, progress).await {
+            log::warn!("the required mods were not applied: {error}");
+        }
         let manifest = profile.manifest().await?;
         let game = self.game(&manifest).await?;
         let lock = profile.lock().await?;
@@ -361,6 +377,26 @@ impl Forge {
         profile.save_launch_settings(&settings).await
     }
 
+    /// Puts the required mods of the game into the manifest and the lock.
+    /// When nothing changes this reads only the cached list, no index.
+    pub async fn apply_required(
+        &self,
+        profile: &Profile,
+        progress: &Progress,
+    ) -> Result<LockChange> {
+        let mut manifest = profile.manifest().await?;
+        let list = required::load_list(&self.client, self.data()).await?;
+        let wanted = required::of_game(&list, &manifest.game)?;
+        let changed = required::apply(&mut manifest, &wanted);
+        if changed.is_empty() {
+            return Ok(LockChange::default());
+        }
+        let game = self.game(&manifest).await?;
+        let index = self.index(&game, FRESH_ENOUGH, progress).await?;
+        self.relock(profile, &manifest, &index, &Unlock::Only(changed))
+            .await
+    }
+
     async fn relock(
         &self,
         profile: &Profile,
@@ -410,6 +446,15 @@ fn match_id<'a>(ids: impl Iterator<Item = &'a PackageId>, query: &str) -> Result
         )));
     }
     Ok(first.clone())
+}
+
+fn refuse_required(manifest: &Manifest, id: &PackageId) -> Result<()> {
+    if manifest.mods.get(id).is_some_and(is_required) {
+        return Err(Error::Invalid(format!(
+            "{id} is required, every player has it"
+        )));
+    }
+    Ok(())
 }
 
 fn manifest_id(manifest: &Manifest, query: &str) -> Result<PackageId> {

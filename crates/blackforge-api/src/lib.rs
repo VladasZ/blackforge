@@ -2,13 +2,14 @@
 //! against this one crate, so a request and its answer cannot drift apart.
 //!
 //! Every route wants `Authorization: Bearer <session token>` from the Google
-//! login of the engine, except the list of [`broken`] mods, which anybody may
-//! read.
+//! login of the engine, except the lists of [`broken`] and [`required`] mods,
+//! which anybody may read.
 
 pub mod broken;
 pub mod competitive;
 pub mod gate;
 pub mod report;
+pub mod required;
 pub mod servers;
 pub mod setup;
 pub mod username;

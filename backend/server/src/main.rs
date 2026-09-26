@@ -1,9 +1,11 @@
 //! The blackforge server. It serves the landing page, the Google login of the
-//! engine, the friends api of the app, and the list of broken mods.
+//! engine, the friends api of the app, and the lists of broken and required
+//! mods.
 
 mod broken;
 mod gate;
 mod reports;
+mod required;
 mod routes;
 mod servers;
 mod site;
@@ -31,6 +33,7 @@ async fn main() -> Result<()> {
         .unwrap_or(DEFAULT_PORT);
     let database_url = env::var("DATABASE_URL").context("DATABASE_URL required")?;
     let broken = broken::load()?;
+    let required = required::load()?;
     let tiers = tiers::load()?;
 
     let db = build_db(&database_url).await?;
@@ -52,6 +55,7 @@ async fn main() -> Result<()> {
         .merge(gate::routes(tiers))
         .merge(reports::routes())
         .merge(broken::routes(broken))
+        .merge(required::routes(required))
         .merge(site::routes())
         .with_state(db);
 

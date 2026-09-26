@@ -41,3 +41,7 @@ status-plugin:
 hugin-plugin:
 	docker run --rm -v "$(CURDIR)/assets:/src" -v "$(VALHEIM_MANAGED):/managed:ro" mcr.microsoft.com/dotnet/sdk:10.0 sh -c \
 		'mkdir -p /build/hugin && cp /src/hugin/*.cs /src/hugin/BlackforgeHugin.csproj /build/hugin/ && cd /build/hugin && dotnet build -c Release -o /out -p:ValheimManaged=/managed && cp /out/BlackforgeHugin.dll /src/hugin/'
+
+emoji-plugin:
+	docker run --rm -v "$(CURDIR)/assets:/src" -v "$(VALHEIM_MANAGED):/managed:ro" mcr.microsoft.com/dotnet/sdk:10.0 sh -c \
+		'mkdir -p /build/emoji && cp /src/emoji/*.cs /src/emoji/BlackforgeEmoji.csproj /build/emoji/ && cd /build/emoji && dotnet build -c Release -o /out -p:ValheimManaged=/managed && cp /out/BlackforgeEmoji.dll /src/emoji/'

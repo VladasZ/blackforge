@@ -29,7 +29,7 @@ flate2 = "1.1"
 futures-util = "0.3"
 hilen = { git = "https://github.com/hilen/hilen", rev = "2389d3efcf383998ea32068d0ff9ff7837a1793a" }
 hilen-server = { git = "https://github.com/hilen/hilen", rev = "2389d3efcf383998ea32068d0ff9ff7837a1793a" }
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["gif", "png"] }
 indicatif = "0.18"
 log = "0.4"
 noise = "0.9"

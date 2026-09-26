@@ -2,66 +2,23 @@
 //! serves it to anybody. This module reads it and resolves it against the
 //! game installed on this machine.
 
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-    time::{Duration, SystemTime},
-};
+use std::{collections::BTreeMap, time::SystemTime};
 
 use blackforge_api::broken::BrokenList;
 use chrono::{DateTime, NaiveDate, Utc};
 use semver::Version;
-use tokio::fs;
 
 use crate::{
-    error::{Error, IoContext, Result},
+    error::{Error, Result},
     http::Client,
     ident::{PackageId, parse_version},
     paths::DataDir,
-    social::client::SERVER,
-    util::file_age,
+    served_list,
 };
 
-const CACHE_FILE: &str = "broken.json";
-
-/// A copy this old is read again from the server.
-const MAX_AGE: Duration = Duration::from_hours(1);
-
-fn cache_path(data: &DataDir) -> PathBuf {
-    data.index_dir().join(CACHE_FILE)
-}
-
-/// The list as the server has it now. The cached copy serves while it is
-/// younger than an hour. When the server cannot be reached, an older copy
-/// still serves, the mods of a profile must list without the network. Only a
-/// machine with no copy at all gets the error.
+/// The list as the server has it now, see `served_list::load`.
 pub async fn load_list(client: &Client, data: &DataDir) -> Result<BrokenList> {
-    let path = cache_path(data);
-    let age = file_age(&path).await;
-    if age.is_some_and(|age| age < MAX_AGE) {
-        return read_cache(&path).await;
-    }
-    match client
-        .get_json::<BrokenList>(&format!("{SERVER}/api/broken"))
-        .await
-    {
-        Ok(list) => {
-            fs::create_dir_all(data.index_dir())
-                .await
-                .at(&data.index_dir())?;
-            fs::write(&path, serde_json::to_vec(&list)?)
-                .await
-                .at(&path)?;
-            Ok(list)
-        }
-        Err(_) if age.is_some() => read_cache(&path).await,
-        Err(error) => Err(error),
-    }
-}
-
-async fn read_cache(path: &Path) -> Result<BrokenList> {
-    let bytes = fs::read(path).await.at(path)?;
-    Ok(serde_json::from_slice(&bytes)?)
+    served_list::load(client, data, "broken.json", "/api/broken").await
 }
 
 /// The broken mods of one game as it is installed on this machine.

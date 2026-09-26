@@ -27,6 +27,8 @@ pub enum Error {
     World { path: PathBuf, reason: Malformed },
     #[error("bad zip archive: {0}")]
     Zip(zip::result::ZipError),
+    #[error("bad image: {0}")]
+    Image(image::ImageError),
     #[error("a background task failed: {0}")]
     Task(tokio::task::JoinError),
     #[error("'{0}' is not a valid package id, expected Owner-Name")]
@@ -92,6 +94,7 @@ from_cause! {
     TomlWrite(toml::ser::Error),
     Yaml(serde_yaml_ng::Error),
     Zip(zip::result::ZipError),
+    Image(image::ImageError),
     Task(tokio::task::JoinError),
 }
 

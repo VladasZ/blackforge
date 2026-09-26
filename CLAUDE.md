@@ -3,10 +3,12 @@ Read `docs/sync.md` before touching cloud sync.
 Read `docs/servers.md` before touching the server list.
 Read `docs/join.md` before touching the join button plugin.
 Read `docs/hugin.md` before touching the plugin that keeps the ravens away.
+Read `docs/emoji.md` before touching the chat emojis plugin.
 Read `docs/status.md` before touching the server status plugin.
 Read `docs/gate.md` before touching the join codes, members or the server gate.
 Read `docs/competitive.md` before touching competitive servers or `tiers.toml`.
 Read `docs/reports.md` before touching the connection reports.
+Read `docs/required.md` before touching the required mods or `required.toml`.
 
 ## Never release unverified
 

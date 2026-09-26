@@ -629,6 +629,8 @@ dependencies = [
  "dirs 7.0.0",
  "flate2",
  "futures-util",
+ "image",
+ "log",
  "reqwest 0.13.5",
  "semver",
  "serde",
